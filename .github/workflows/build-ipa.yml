@@ -58,8 +58,9 @@ permissions:
 env:
   BUILD_DIR: build
   CONFIGURATION: ${{ github.event.inputs.configuration || 'Release' }}
-  # push 触发默认只跑骨架（便宜、快、只验工具链）；要出正式包请手动 Run workflow 选 app
-  STAGE: ${{ github.event.inputs.stage || 'skeleton' }}
+  # 骨架阶段已验证通过（run#2 成功产出 Skeleton.ipa），默认阶段切到 app，推一次就构建正式包。
+  # 想重验工具链可手动 Run workflow 选 skeleton。
+  STAGE: ${{ github.event.inputs.stage || 'app' }}
 
 jobs:
   build:
