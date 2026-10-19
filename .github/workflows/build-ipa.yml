@@ -63,7 +63,9 @@ env:
 
 jobs:
   build:
-    runs-on: macos-26
+    # macos-26 是较新的标签，部分公开仓库/组织还没开通，会一直 queued 拿不到 runner。
+    # macos-14 是最稳的公开镜像（Xcode 15/16 系列）。若你确认账号支持 macos-26，可改回。
+    runs-on: macos-14
     timeout-minutes: 90
 
     steps:
@@ -109,14 +111,17 @@ jobs:
           xcodebuild -version || true
 
           DEFAULT_MAJOR="$(xcodebuild -version 2>/dev/null | head -1 | sed -E 's/^Xcode ([0-9]+).*/\1/' || true)"
-          if [ -n "${DEFAULT_MAJOR:-}" ] && [ "${DEFAULT_MAJOR}" -ge 26 ] 2>/dev/null; then
-            # 默认 Xcode 就是 26.x：用它最稳，镜像只为默认版本预装 iOS 平台组件
-            echo "默认 Xcode 版本 ${DEFAULT_MAJOR}.x，直接使用"
+          echo "默认 Xcode 主版本: ${DEFAULT_MAJOR:-未知}"
+
+          # 策略：优先用默认 Xcode（镜像只为默认版本预装 iOS 平台组件）。
+          # 只有当默认版本低于 iOS 17 所需（Xcode 15）时，才去找版本号最大的可用 Xcode。
+          # 注意：按版本号排序用 sort -V，不能按字母序取 head。
+          if [ -n "${DEFAULT_MAJOR:-}" ] && [ "${DEFAULT_MAJOR}" -ge 15 ] 2>/dev/null; then
+            echo "默认 Xcode ${DEFAULT_MAJOR}.x 满足 iOS 17 构建要求，直接使用"
           else
-            # 否则挑版本号最大的 26.x（注意按版本排序，不能按字母序取 head）
-            XCODE="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)"
+            XCODE="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1 || true)"
             if [ -n "${XCODE}" ]; then
-              echo "切换到 $XCODE"
+              echo "默认版本过低，切换到 $XCODE"
               sudo xcode-select -s "$XCODE/Contents/Developer"
             fi
           fi
@@ -230,7 +235,7 @@ jobs:
           echo "=== 当前 Xcode 构建失败，尝试切换其它 Xcode 重试 ==="
           xcodebuild -showdestinations -project "${XCODE_PROJECT}" -scheme "${TARGET}" || true
 
-          for XCODE in $(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -Vr); do
+          for XCODE in $(ls -d /Applications/Xcode*.app 2>/dev/null | sort -Vr); do
             echo "--- 尝试 $XCODE ---"
             sudo xcode-select -s "$XCODE/Contents/Developer"
             xcodebuild -version
