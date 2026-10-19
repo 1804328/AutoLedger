@@ -1,0 +1,40 @@
+# ─────────────────────────── 构建产物 ───────────────────────────
+build/
+DerivedData/
+build.log
+
+# 打包产物
+Payload/
+*.ipa
+*.xcarchive
+*.dSYM
+*.app
+artifact-app/
+
+# ─────────────────────────── XcodeGen 生成物 ───────────────────────────
+# AutoLedger.xcodeproj 由 `xcodegen generate` 从 project.yml 生成，
+# 不入库以避免合并冲突；需要时运行 xcodegen 重新生成。
+AutoLedger.xcodeproj/
+*.xcodeproj
+*.xcworkspace
+
+# 由 tools/ensure_scheme.py 在本地生成到 .xcodeproj 内，同样属于生成物
+xcshareddata/xcschemes/*.xcscheme
+xcuserdata/
+
+# ─────────────────────────── Xcode 用户数据 ───────────────────────────
+*.xcuserstate
+*.xcuserdatad
+project.xcworkspace/
+
+# ─────────────────────────── macOS ───────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# ─────────────────────────── 日志与临时文件 ───────────────────────────
+*.log
+*.tmp
+*.swp
+*~
