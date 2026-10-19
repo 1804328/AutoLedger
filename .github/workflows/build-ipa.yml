@@ -1,30 +1,17 @@
-name: Build unsigned IPA
+﻿name: Build unsigned IPA
 
-# 免费签名路线：macOS runner 只负责编译出**未签名**的 .ipa / .app，
-# 用户再用 Sideloadly / AltStore / TrollStore 等工具、用免费 Apple ID 或自签证书
-# 在 Windows / 自己的机器上签名安装。不需要 Mac，也不需要 99 美元开发者账号。
+# 鍏嶈垂绛惧悕璺嚎锛歮acOS runner 鍙礋璐ｇ紪璇戝嚭**鏈鍚?*鐨?.ipa / .app锛?# 鐢ㄦ埛鍐嶇敤 Sideloadly / AltStore / TrollStore 绛夊伐鍏枫€佺敤鍏嶈垂 Apple ID 鎴栬嚜绛捐瘉涔?# 鍦?Windows / 鑷繁鐨勬満鍣ㄤ笂绛惧悕瀹夎銆備笉闇€瑕?Mac锛屼篃涓嶉渶瑕?99 缇庡厓寮€鍙戣€呰处鍙枫€?#
+# 鐢ㄦ硶锛氭帹閫佸埌 GitHub 鈫?Actions 閲屾墜鍔?Run workflow锛堟垨 push 鍒?main 鑷姩瑙﹀彂锛?#      鈫?璺戝畬鍦?Artifacts 閲屼笅杞?AutoLedger-ipa / AutoLedger-app
 #
-# 用法：推送到 GitHub → Actions 里手动 Run workflow（或 push 到 main 自动触发）
-#      → 跑完在 Artifacts 里下载 AutoLedger-ipa / AutoLedger-app
-#
-# ─────────────────────────── 已知的坑（踩过，别再踩） ───────────────────────────
-# 1) Public 仓库的 Actions macOS 构建**不计额度**；Private 仓库每月 2000 分钟，
-#    但 macOS runner 按 **10 倍** 扣（即实际约 200 分钟），大约只够 5-8 次构建/月。
-#    仓库设成 Public 可以白嫖，或按需手动触发、别开 push 全量触发。
-# 2) 免费 Apple ID 签名的证书只有 **7 天有效期**，到期需重签；而且
-#    **重签会清空 App 的本地数据**（沙盒容器随签名身份变化），用户需自行备份。
-# 3) 绝对不要加 `-allowProvisioningUpdates`：它会去连 Apple 账号、尝试自动签名，
-#    在无凭据的 CI 上直接失败，而且可能给产物带上残留签名，导致用户自签冲突。
-#    本流水线全程 CODE_SIGNING_ALLOWED=NO / CODE_SIGNING_REQUIRED=NO / CODE_SIGN_IDENTITY=""。
-# 4) 打包 ipa 必须用 `zip -qry`（-y 保留符号链接），普通 zip 会破坏 .app 内部结构。
-# 5) macOS 镜像里预装多个 Xcode，但**只有默认版本预装了 iOS 平台组件**；
-#    切换 Xcode 后如果缺 iOS SDK，构建会失败，所以要保留下面「选 Xcode + 失败换版本重试」的逻辑。
-
+# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 宸茬煡鐨勫潙锛堣俯杩囷紝鍒啀韪╋級 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# 1) Public 浠撳簱鐨?Actions macOS 鏋勫缓**涓嶈棰濆害**锛汸rivate 浠撳簱姣忔湀 2000 鍒嗛挓锛?#    浣?macOS runner 鎸?**10 鍊?* 鎵ｏ紙鍗冲疄闄呯害 200 鍒嗛挓锛夛紝澶х害鍙 5-8 娆℃瀯寤?鏈堛€?#    浠撳簱璁炬垚 Public 鍙互鐧藉珫锛屾垨鎸夐渶鎵嬪姩瑙﹀彂銆佸埆寮€ push 鍏ㄩ噺瑙﹀彂銆?# 2) 鍏嶈垂 Apple ID 绛惧悕鐨勮瘉涔﹀彧鏈?**7 澶╂湁鏁堟湡**锛屽埌鏈熼渶閲嶇锛涜€屼笖
+#    **閲嶇浼氭竻绌?App 鐨勬湰鍦版暟鎹?*锛堟矙鐩掑鍣ㄩ殢绛惧悕韬唤鍙樺寲锛夛紝鐢ㄦ埛闇€鑷澶囦唤銆?# 3) 缁濆涓嶈鍔?`-allowProvisioningUpdates`锛氬畠浼氬幓杩?Apple 璐﹀彿銆佸皾璇曡嚜鍔ㄧ鍚嶏紝
+#    鍦ㄦ棤鍑嵁鐨?CI 涓婄洿鎺ュけ璐ワ紝鑰屼笖鍙兘缁欎骇鐗╁甫涓婃畫鐣欑鍚嶏紝瀵艰嚧鐢ㄦ埛鑷鍐茬獊銆?#    鏈祦姘寸嚎鍏ㄧ▼ CODE_SIGNING_ALLOWED=NO / CODE_SIGNING_REQUIRED=NO / CODE_SIGN_IDENTITY=""銆?# 4) 鎵撳寘 ipa 蹇呴』鐢?`zip -qry`锛?y 淇濈暀绗﹀彿閾炬帴锛夛紝鏅€?zip 浼氱牬鍧?.app 鍐呴儴缁撴瀯銆?# 5) macOS 闀滃儚閲岄瑁呭涓?Xcode锛屼絾**鍙湁榛樿鐗堟湰棰勮浜?iOS 骞冲彴缁勪欢**锛?#    鍒囨崲 Xcode 鍚庡鏋滅己 iOS SDK锛屾瀯寤轰細澶辫触锛屾墍浠ヨ淇濈暀涓嬮潰銆岄€?Xcode + 澶辫触鎹㈢増鏈噸璇曘€嶇殑閫昏緫銆?
 on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "构建阶段：先 skeleton 确认工具链绿了，再跑 app"
+        description: "鏋勫缓闃舵锛氬厛 skeleton 纭宸ュ叿閾剧豢浜嗭紝鍐嶈窇 app"
         required: true
         default: skeleton
         type: choice
@@ -32,7 +19,7 @@ on:
           - skeleton
           - app
       configuration:
-        description: "构建配置（默认 Release）"
+        description: "鏋勫缓閰嶇疆锛堥粯璁?Release锛?
         required: false
         default: Release
         type: choice
@@ -41,14 +28,13 @@ on:
           - Debug
   push:
     branches: [main]
-    # 只有动到工程 / 流水线本身才构建，避免改个 README 也烧掉一次 macOS 额度。
-    paths:
+    # 鍙湁鍔ㄥ埌宸ョ▼ / 娴佹按绾挎湰韬墠鏋勫缓锛岄伩鍏嶆敼涓?README 涔熺儳鎺変竴娆?macOS 棰濆害銆?    paths:
       - "AutoLedger/**"
       - "skeleton/**"
       - "project.yml"
       - ".github/workflows/build-ipa.yml"
 
-# 故意不设 concurrency：多人/多次手动触发时，不要互相取消正在跑的构建
+# 鏁呮剰涓嶈 concurrency锛氬浜?澶氭鎵嬪姩瑙﹀彂鏃讹紝涓嶈浜掔浉鍙栨秷姝ｅ湪璺戠殑鏋勫缓
 
 permissions:
   contents: read
@@ -56,7 +42,7 @@ permissions:
 env:
   BUILD_DIR: build
   CONFIGURATION: ${{ github.event.inputs.configuration || 'Release' }}
-  # push 触发默认只跑骨架（便宜、快、只验工具链）；要出正式包请手动 Run workflow 选 app
+  # push 瑙﹀彂榛樿鍙窇楠ㄦ灦锛堜究瀹溿€佸揩銆佸彧楠屽伐鍏烽摼锛夛紱瑕佸嚭姝ｅ紡鍖呰鎵嬪姩 Run workflow 閫?app
   STAGE: ${{ github.event.inputs.stage || 'skeleton' }}
 
 jobs:
@@ -68,10 +54,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 分阶段构建的核心：所有后续步骤都读这里输出的变量，不再写死 AutoLedger。
-      # skeleton = 零原生代码，编不过只可能是环境/workflow 问题；
-      # app      = 完整业务代码，编不过才可能是我们的 Swift 问题。
-      - name: 解析构建阶段
+      # 鍒嗛樁娈垫瀯寤虹殑鏍稿績锛氭墍鏈夊悗缁楠ら兘璇昏繖閲岃緭鍑虹殑鍙橀噺锛屼笉鍐嶅啓姝?AutoLedger銆?      # skeleton = 闆跺師鐢熶唬鐮侊紝缂栦笉杩囧彧鍙兘鏄幆澧?workflow 闂锛?      # app      = 瀹屾暣涓氬姟浠ｇ爜锛岀紪涓嶈繃鎵嶅彲鑳芥槸鎴戜滑鐨?Swift 闂銆?      - name: 瑙ｆ瀽鏋勫缓闃舵
         id: cfg
         run: |
           set -euo pipefail
@@ -79,15 +62,15 @@ jobs:
             skeleton)
               proj_dir="skeleton"; target="Skeleton"; product="Skeleton"
               bundle_id="com.autoledger.skeleton"; needs_patch="false"
-              echo "==> 阶段 1/2：骨架工程（零原生代码，只验工具链）"
+              echo "==> 闃舵 1/2锛氶鏋跺伐绋嬶紙闆跺師鐢熶唬鐮侊紝鍙獙宸ュ叿閾撅級"
               ;;
             app)
               proj_dir="."; target="AutoLedger"; product="AutoLedger"
               bundle_id="com.autoledger.app"; needs_patch="true"
-              echo "==> 阶段 2/2：主工程（完整业务代码）"
+              echo "==> 闃舵 2/2锛氫富宸ョ▼锛堝畬鏁翠笟鍔′唬鐮侊級"
               ;;
             *)
-              echo "::error::未知构建阶段：${STAGE}"
+              echo "::error::鏈煡鏋勫缓闃舵锛?{STAGE}"
               exit 1
               ;;
           esac
@@ -99,37 +82,33 @@ jobs:
             echo "needs_scheme_patch=${needs_patch}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: 选择 Xcode（需要已安装 iOS 平台）
-        run: |
+      - name: 閫夋嫨 Xcode锛堥渶瑕佸凡瀹夎 iOS 骞冲彴锛?        run: |
           set -euo pipefail
           ls -d /Applications/Xcode*.app || true
-          echo "--- 默认 Xcode ---"
+          echo "--- 榛樿 Xcode ---"
           xcodebuild -version || true
 
           DEFAULT_MAJOR="$(xcodebuild -version 2>/dev/null | head -1 | sed -E 's/^Xcode ([0-9]+).*/\1/' || true)"
           if [ -n "${DEFAULT_MAJOR:-}" ] && [ "${DEFAULT_MAJOR}" -ge 26 ] 2>/dev/null; then
-            # 默认 Xcode 就是 26.x：用它最稳，镜像只为默认版本预装 iOS 平台组件
-            echo "默认 Xcode 版本 ${DEFAULT_MAJOR}.x，直接使用"
+            # 榛樿 Xcode 灏辨槸 26.x锛氱敤瀹冩渶绋筹紝闀滃儚鍙负榛樿鐗堟湰棰勮 iOS 骞冲彴缁勪欢
+            echo "榛樿 Xcode 鐗堟湰 ${DEFAULT_MAJOR}.x锛岀洿鎺ヤ娇鐢?
           else
-            # 否则挑版本号最大的 26.x（注意按版本排序，不能按字母序取 head）
-            XCODE="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)"
+            # 鍚﹀垯鎸戠増鏈彿鏈€澶х殑 26.x锛堟敞鎰忔寜鐗堟湰鎺掑簭锛屼笉鑳芥寜瀛楁瘝搴忓彇 head锛?            XCODE="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)"
             if [ -n "${XCODE}" ]; then
-              echo "切换到 $XCODE"
+              echo "鍒囨崲鍒?$XCODE"
               sudo xcode-select -s "$XCODE/Contents/Developer"
             fi
           fi
 
-          echo "--- 使用中的 Xcode ---"
+          echo "--- 浣跨敤涓殑 Xcode ---"
           xcode-select -p
           xcodebuild -version
-          echo "--- 可用 SDK ---"
+          echo "--- 鍙敤 SDK ---"
           xcodebuild -showsdks || true
-          echo "--- iphoneos SDK 版本 ---"
+          echo "--- iphoneos SDK 鐗堟湰 ---"
           xcrun --sdk iphoneos --show-sdk-version
 
-      # 仓库根目录可能直接就是工程目录，也可能有一层 AutoLedger/ 子目录。
-      # 统一探测 project.yml 所在目录，后续步骤都以它为工作目录，两种布局都能跑。
-      - name: 定位工程目录
+      # 浠撳簱鏍圭洰褰曞彲鑳界洿鎺ュ氨鏄伐绋嬬洰褰曪紝涔熷彲鑳芥湁涓€灞?AutoLedger/ 瀛愮洰褰曘€?      # 缁熶竴鎺㈡祴 project.yml 鎵€鍦ㄧ洰褰曪紝鍚庣画姝ラ閮戒互瀹冧负宸ヤ綔鐩綍锛屼袱绉嶅竷灞€閮借兘璺戙€?      - name: 瀹氫綅宸ョ▼鐩綍
         id: locate
         run: |
           set -euo pipefail
@@ -138,44 +117,39 @@ jobs:
           elif [ -f "project.yml" ]; then
             proj_dir="."
           else
-            echo "::error::找不到 project.yml，请确认仓库结构"
+            echo "::error::鎵句笉鍒?project.yml锛岃纭浠撳簱缁撴瀯"
             exit 1
           fi
-          # 主工程在仓库根的 AutoLedger/ 下；骨架工程在 AutoLedger/skeleton/ 下。
-          # 统一成「相对仓库根」的路径，并拼出阶段子目录。
-          stage_dir="${proj_dir}/${{ steps.cfg.outputs.project_dir }}"
+          # 涓诲伐绋嬪湪浠撳簱鏍圭殑 AutoLedger/ 涓嬶紱楠ㄦ灦宸ョ▼鍦?AutoLedger/skeleton/ 涓嬨€?          # 缁熶竴鎴愩€岀浉瀵逛粨搴撴牴銆嶇殑璺緞锛屽苟鎷煎嚭闃舵瀛愮洰褰曘€?          stage_dir="${proj_dir}/${{ steps.cfg.outputs.project_dir }}"
           if [ "${{ steps.cfg.outputs.project_dir }}" = "." ]; then
             stage_dir="${proj_dir}"
           fi
           if [ ! -f "${stage_dir}/project.yml" ]; then
-            echo "::error::阶段目录 ${stage_dir} 下没有 project.yml"
+            echo "::error::闃舵鐩綍 ${stage_dir} 涓嬫病鏈?project.yml"
             exit 1
           fi
           echo "stage_dir=${stage_dir}" >> "$GITHUB_OUTPUT"
-          echo "工程目录: ${stage_dir}"
+          echo "宸ョ▼鐩綍: ${stage_dir}"
 
-      - name: 安装 XcodeGen
+      - name: 瀹夎 XcodeGen
         run: |
           set -euo pipefail
           if command -v xcodegen >/dev/null 2>&1; then
-            echo "XcodeGen 已预装，跳过 brew install"
+            echo "XcodeGen 宸查瑁咃紝璺宠繃 brew install"
           else
             brew install xcodegen
           fi
           xcodegen --version
 
-      - name: 生成 Xcode 工程
+      - name: 鐢熸垚 Xcode 宸ョ▼
         working-directory: ${{ steps.locate.outputs.stage_dir }}
         run: |
           set -euo pipefail
           xcodegen generate --spec project.yml
           ls -la
 
-      # project.yml 里没有声明 scheme:，XcodeGen 就不会生成 .xcscheme，
-      # 而 xcodebuild -scheme 必须要有共享 scheme 才能 archive。
-      # 该脚本只写 xcodegen 生成的 *.xcodeproj（构建产物、已被 .gitignore 忽略），
-      # 不动任何源码 / project.yml / Info.plist / Assets；幂等，已存在则跳过。
-      - name: 确保共享 scheme 存在
+      # project.yml 閲屾病鏈夊０鏄?scheme:锛孹codeGen 灏变笉浼氱敓鎴?.xcscheme锛?      # 鑰?xcodebuild -scheme 蹇呴』瑕佹湁鍏变韩 scheme 鎵嶈兘 archive銆?      # 璇ヨ剼鏈彧鍐?xcodegen 鐢熸垚鐨?*.xcodeproj锛堟瀯寤轰骇鐗┿€佸凡琚?.gitignore 蹇界暐锛夛紝
+      # 涓嶅姩浠讳綍婧愮爜 / project.yml / Info.plist / Assets锛涘箓绛夛紝宸插瓨鍦ㄥ垯璺宠繃銆?      - name: 纭繚鍏变韩 scheme 瀛樺湪
         if: steps.cfg.outputs.needs_scheme_patch == 'true'
         working-directory: ${{ steps.locate.outputs.stage_dir }}
         run: |
@@ -186,8 +160,7 @@ jobs:
             --configuration "${CONFIGURATION}"
           xcodebuild -project "${{ steps.cfg.outputs.target }}.xcodeproj" -list
 
-      - name: 编译未签名 .app（archive）
-        working-directory: ${{ steps.locate.outputs.stage_dir }}
+      - name: 缂栬瘧鏈鍚?.app锛坅rchive锛?        working-directory: ${{ steps.locate.outputs.stage_dir }}
         run: |
           set -euo pipefail
           LOG="$PWD/build.log"
@@ -214,35 +187,34 @@ jobs:
           }
 
           summarize() {
-            echo "================ 错误摘要 ================"
-            grep -nE "error:|fatal error:|❌|Command .* failed|failed with a nonzero exit code" \
+            echo "================ 閿欒鎽樿 ================"
+            grep -nE "error:|fatal error:|鉂寍Command .* failed|failed with a nonzero exit code" \
               "$LOG" | tail -n 80 || true
             echo "=========================================="
           }
 
-          # 首选当前 Xcode；失败则按版本号从新到旧逐个尝试（镜像只为部分 Xcode 预装 iOS 平台）
-          if build_once; then
+          # 棣栭€夊綋鍓?Xcode锛涘け璐ュ垯鎸夌増鏈彿浠庢柊鍒版棫閫愪釜灏濊瘯锛堥暅鍍忓彧涓洪儴鍒?Xcode 棰勮 iOS 骞冲彴锛?          if build_once; then
             exit 0
           fi
           summarize
-          echo "=== 当前 Xcode 构建失败，尝试切换其它 Xcode 重试 ==="
+          echo "=== 褰撳墠 Xcode 鏋勫缓澶辫触锛屽皾璇曞垏鎹㈠叾瀹?Xcode 閲嶈瘯 ==="
           xcodebuild -showdestinations -project "${XCODE_PROJECT}" -scheme "${TARGET}" || true
 
           for XCODE in $(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -Vr); do
-            echo "--- 尝试 $XCODE ---"
+            echo "--- 灏濊瘯 $XCODE ---"
             sudo xcode-select -s "$XCODE/Contents/Developer"
             xcodebuild -version
             if build_once; then
-              echo "=== 使用 $XCODE 构建成功 ==="
+              echo "=== 浣跨敤 $XCODE 鏋勫缓鎴愬姛 ==="
               exit 0
             fi
             summarize
           done
 
-          echo "=== 所有候选 Xcode 均构建失败 ==="
+          echo "=== 鎵€鏈夊€欓€?Xcode 鍧囨瀯寤哄け璐?==="
           exit 1
 
-      - name: 打包成未签名 IPA
+      - name: 鎵撳寘鎴愭湭绛惧悕 IPA
         working-directory: ${{ steps.locate.outputs.stage_dir }}
         run: |
           set -euo pipefail
@@ -250,63 +222,58 @@ jobs:
           BUNDLE_ID="${{ steps.cfg.outputs.bundle_id }}"
           APP="${BUILD_DIR}/${PRODUCT}.xcarchive/Products/Applications/${PRODUCT}.app"
           if [ ! -d "$APP" ]; then
-            echo "没有找到 .app"
+            echo "娌℃湁鎵惧埌 .app"
             find "${BUILD_DIR}/${PRODUCT}.xcarchive" -maxdepth 4 -type d -name '*.app' || true
             exit 1
           fi
           echo "app: $APP"
 
-          # 二次确认产物未被签名（未签名 = 没有 _CodeSignature，codesign 也查不到）
-          if [ -d "$APP/_CodeSignature" ]; then
-            echo "::warning::产物中存在 _CodeSignature，移除以保证未签名"
+          # 浜屾纭浜х墿鏈绛惧悕锛堟湭绛惧悕 = 娌℃湁 _CodeSignature锛宑odesign 涔熸煡涓嶅埌锛?          if [ -d "$APP/_CodeSignature" ]; then
+            echo "::warning::浜х墿涓瓨鍦?_CodeSignature锛岀Щ闄や互淇濊瘉鏈鍚?
             rm -rf "$APP/_CodeSignature"
           fi
           if codesign -dv "$APP" >/dev/null 2>&1; then
-            echo "::warning::检测到残留签名，执行移除"
+            echo "::warning::妫€娴嬪埌娈嬬暀绛惧悕锛屾墽琛岀Щ闄?
             codesign --remove-signature "$APP" || true
           fi
           if codesign -dv "$APP" >/dev/null 2>&1; then
-            echo "::error::产物仍然带签名，用户自签会冲突"
+            echo "::error::浜х墿浠嶇劧甯︾鍚嶏紝鐢ㄦ埛鑷浼氬啿绐?
             exit 1
           fi
-          echo "OK: 产物为未签名 app"
+          echo "OK: 浜х墿涓烘湭绛惧悕 app"
 
-          # 结构自检：二进制 + bundle id
-          test -f "$APP/${PRODUCT}" || { echo "::error::缺少可执行文件 ${PRODUCT}"; exit 1; }
+          # 缁撴瀯鑷锛氫簩杩涘埗 + bundle id
+          test -f "$APP/${PRODUCT}" || { echo "::error::缂哄皯鍙墽琛屾枃浠?${PRODUCT}"; exit 1; }
           file "$APP/${PRODUCT}"
           GOT_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
           echo "Bundle ID: $GOT_ID"
-          [ "$GOT_ID" = "${BUNDLE_ID}" ] || { echo "::error::bundle id 不是预期的 ${BUNDLE_ID}"; exit 1; }
+          [ "$GOT_ID" = "${BUNDLE_ID}" ] || { echo "::error::bundle id 涓嶆槸棰勬湡鐨?${BUNDLE_ID}"; exit 1; }
 
           rm -rf Payload "${PRODUCT}.ipa"
           mkdir -p Payload
-          # ditto 比 cp -R 更完整地保留符号链接 / 权限 / 扩展属性
-          ditto "$APP" "Payload/${PRODUCT}.app"
+          # ditto 姣?cp -R 鏇村畬鏁村湴淇濈暀绗﹀彿閾炬帴 / 鏉冮檺 / 鎵╁睍灞炴€?          ditto "$APP" "Payload/${PRODUCT}.app"
 
-          # 关键：-y 保留符号链接、-r 递归，不能用普通 zip
+          # 鍏抽敭锛?y 淇濈暀绗﹀彿閾炬帴銆?r 閫掑綊锛屼笉鑳界敤鏅€?zip
           zip -qry "${PRODUCT}.ipa" Payload
           ls -lh "${PRODUCT}.ipa"
 
-          # 注意：全程有 pipefail，不能把 unzip 输出管道给 head / grep -q
-          # （它们会提前退出，导致 unzip 收到 SIGPIPE，整个步骤被判失败）。
-          # 所以先把清单落到文件，再对文件做检查。
-          unzip -l "${PRODUCT}.ipa" > "${BUILD_DIR}/ipa-contents.txt"
+          # 娉ㄦ剰锛氬叏绋嬫湁 pipefail锛屼笉鑳芥妸 unzip 杈撳嚭绠￠亾缁?head / grep -q
+          # 锛堝畠浠細鎻愬墠閫€鍑猴紝瀵艰嚧 unzip 鏀跺埌 SIGPIPE锛屾暣涓楠よ鍒ゅけ璐ワ級銆?          # 鎵€浠ュ厛鎶婃竻鍗曡惤鍒版枃浠讹紝鍐嶅鏂囦欢鍋氭鏌ャ€?          unzip -l "${PRODUCT}.ipa" > "${BUILD_DIR}/ipa-contents.txt"
           sed -n '1,20p' "${BUILD_DIR}/ipa-contents.txt"
           if ! grep -q "Payload/${PRODUCT}.app/" "${BUILD_DIR}/ipa-contents.txt"; then
-            echo "::error::ipa 结构不正确，缺少 Payload/${PRODUCT}.app/"
+            echo "::error::ipa 缁撴瀯涓嶆纭紝缂哄皯 Payload/${PRODUCT}.app/"
             exit 1
           fi
 
-          # 另存一份 .app，供只接受 .app 的签名工具使用
-          rm -rf artifact-app
+          # 鍙﹀瓨涓€浠?.app锛屼緵鍙帴鍙?.app 鐨勭鍚嶅伐鍏蜂娇鐢?          rm -rf artifact-app
           mkdir -p artifact-app
           ditto "$APP" "artifact-app/${PRODUCT}.app"
           SYMLINKS="$(find "artifact-app/${PRODUCT}.app" -type l -print -quit)"
           if [ -n "${SYMLINKS}" ]; then
-            echo "::warning::.app 中存在符号链接，zip 上传会丢失链接，建议改用 tar.gz 分发"
+            echo "::warning::.app 涓瓨鍦ㄧ鍙烽摼鎺ワ紝zip 涓婁紶浼氫涪澶遍摼鎺ワ紝寤鸿鏀圭敤 tar.gz 鍒嗗彂"
           fi
 
-      - name: 上传未签名 IPA
+      - name: 涓婁紶鏈鍚?IPA
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.cfg.outputs.product }}-ipa
@@ -314,7 +281,7 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: 上传未签名 APP
+      - name: 涓婁紶鏈鍚?APP
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.cfg.outputs.product }}-app
@@ -322,8 +289,7 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: 失败时上传构建日志
-        if: failure()
+      - name: 澶辫触鏃朵笂浼犳瀯寤烘棩蹇?        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.cfg.outputs.product }}-build-log
@@ -333,23 +299,23 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-      - name: 构建摘要
+      - name: 鏋勫缓鎽樿
         if: success()
         run: |
           {
-            echo "## 构建完成（阶段：\`${STAGE}\`）"
+            echo "## 鏋勫缓瀹屾垚锛堥樁娈碉細\`${STAGE}\`锛?
             echo ""
-            echo "- 工程: \`${{ steps.cfg.outputs.target }}\`"
-            echo "- 配置: \`${CONFIGURATION}\`"
-            echo "- 产物 1: \`${{ steps.cfg.outputs.product }}-ipa\` → ${{ steps.cfg.outputs.product }}.ipa（未签名）"
-            echo "- 产物 2: \`${{ steps.cfg.outputs.product }}-app\` → ${{ steps.cfg.outputs.product }}.app（未签名）"
+            echo "- 宸ョ▼: \`${{ steps.cfg.outputs.target }}\`"
+            echo "- 閰嶇疆: \`${CONFIGURATION}\`"
+            echo "- 浜х墿 1: \`${{ steps.cfg.outputs.product }}-ipa\` 鈫?${{ steps.cfg.outputs.product }}.ipa锛堟湭绛惧悕锛?
+            echo "- 浜х墿 2: \`${{ steps.cfg.outputs.product }}-app\` 鈫?${{ steps.cfg.outputs.product }}.app锛堟湭绛惧悕锛?
             echo "- Bundle ID: \`${{ steps.cfg.outputs.bundle_id }}\`"
             echo ""
             if [ "${STAGE}" = "skeleton" ]; then
-              echo "> 这是**骨架**构建，只证明工具链正常。"
-              echo "> 下一步：手动 Run workflow，stage 选 \`app\`，构建真正的业务代码。"
+              echo "> 杩欐槸**楠ㄦ灦**鏋勫缓锛屽彧璇佹槑宸ュ叿閾炬甯搞€?
+              echo "> 涓嬩竴姝ワ細鎵嬪姩 Run workflow锛宻tage 閫?\`app\`锛屾瀯寤虹湡姝ｇ殑涓氬姟浠ｇ爜銆?
             else
-              echo "> 产物完全未签名。请用 Sideloadly / AltStore / 自签证书处理后再安装。"
-              echo "> 免费 Apple ID 签名仅 7 天有效，且重签会清空 App 本地数据，请提前备份。"
+              echo "> 浜х墿瀹屽叏鏈鍚嶃€傝鐢?Sideloadly / AltStore / 鑷璇佷功澶勭悊鍚庡啀瀹夎銆?
+              echo "> 鍏嶈垂 Apple ID 绛惧悕浠?7 澶╂湁鏁堬紝涓旈噸绛句細娓呯┖ App 鏈湴鏁版嵁锛岃鎻愬墠澶囦唤銆?
             fi
           } >> "$GITHUB_STEP_SUMMARY"
