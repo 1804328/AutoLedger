@@ -137,30 +137,30 @@ jobs:
 
       # 仓库根目录可能直接就是工程目录，也可能有一层 AutoLedger/ 子目录。
       # 统一探测 project.yml 所在目录，后续步骤都以它为工作目录，两种布局都能跑。
+      # 仓库布局：project.yml 在仓库根，主工程源码在 AutoLedger/，骨架在 skeleton/。
+      # steps.cfg.outputs.project_dir 直接给出相对仓库根的阶段目录（"." 或 "skeleton"），
+      # 这里不再做二次拼接，避免出现 "./." 这类畸形路径。
       - name: 定位工程目录
         id: locate
         run: |
           set -euo pipefail
-          if [ -f "AutoLedger/project.yml" ]; then
-            proj_dir="AutoLedger"
-          elif [ -f "project.yml" ]; then
-            proj_dir="."
+          STAGE_SUBDIR="${{ steps.cfg.outputs.project_dir }}"
+
+          if [ -f "${STAGE_SUBDIR}/project.yml" ]; then
+            stage_dir="${STAGE_SUBDIR}"
+          elif [ -f "project.yml" ] && [ "${STAGE_SUBDIR}" = "." ]; then
+            stage_dir="."
           else
-            echo "::error::找不到 project.yml，请确认仓库结构"
+            echo "::error::找不到 ${STAGE_SUBDIR}/project.yml，请确认仓库结构"
+            echo "--- 当前目录 ---"
+            ls -la
             exit 1
           fi
-          # 主工程在仓库根的 AutoLedger/ 下；骨架工程在 AutoLedger/skeleton/ 下。
-          # 统一成「相对仓库根」的路径，并拼出阶段子目录。
-          stage_dir="${proj_dir}/${{ steps.cfg.outputs.project_dir }}"
-          if [ "${{ steps.cfg.outputs.project_dir }}" = "." ]; then
-            stage_dir="${proj_dir}"
-          fi
-          if [ ! -f "${stage_dir}/project.yml" ]; then
-            echo "::error::阶段目录 ${stage_dir} 下没有 project.yml"
-            exit 1
-          fi
+
           echo "stage_dir=${stage_dir}" >> "$GITHUB_OUTPUT"
-          echo "工程目录: ${stage_dir}"
+          echo "阶段目录: ${stage_dir}"
+          echo "--- 该目录内容 ---"
+          ls -la "${stage_dir}"
 
       - name: 安装 XcodeGen
         run: |
@@ -188,8 +188,14 @@ jobs:
         run: |
           set -euo pipefail
           TARGET="${{ steps.cfg.outputs.target }}"
+          echo "=== 当前目录 ==="
+          pwd
           echo "=== 工程里可用的 scheme ==="
-          xcodebuild -list -project "${TARGET}.xcodeproj"
+          xcodebuild -list -project "${TARGET}.xcodeproj" || {
+            echo "::error::xcodebuild -list 失败，检查 ${TARGET}.xcodeproj 是否存在"
+            ls -la
+            exit 1
+          }
 
           SCHEME_PATH="${TARGET}.xcodeproj/xcshareddata/xcschemes/${TARGET}.xcscheme"
           if [ -f "$SCHEME_PATH" ]; then
