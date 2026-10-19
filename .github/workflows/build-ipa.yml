@@ -226,6 +226,23 @@ jobs:
             grep -nE "error:|fatal error:|❌|Command .* failed|failed with a nonzero exit code" \
               "$LOG" | tail -n 80 || true
             echo "=========================================="
+
+            # 把错误写进 Job Summary，这样即使没有登录 GitHub 也能直接看到失败原因，
+            # 不必下载需要 admin 权限的日志包。
+            {
+              echo "## ❌ 编译失败：\`${TARGET}\`"
+              echo ""
+              echo '```'
+              grep -E "error:|fatal error:" "$LOG" | head -n 40 || echo "（没抓到 error: 行，请看下方尾部日志）"
+              echo '```'
+              echo ""
+              echo "<details><summary>构建日志尾部 60 行</summary>"
+              echo ""
+              echo '```'
+              tail -n 60 "$LOG" || true
+              echo '```'
+              echo "</details>"
+            } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
           }
 
           # 首选当前 Xcode；失败则按版本号从新到旧逐个尝试（镜像只为部分 Xcode 预装 iOS 平台）
@@ -315,6 +332,7 @@ jobs:
           fi
 
       - name: 上传未签名 IPA
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.cfg.outputs.product }}-ipa
@@ -323,6 +341,7 @@ jobs:
           if-no-files-found: error
 
       - name: 上传未签名 APP
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.cfg.outputs.product }}-app
