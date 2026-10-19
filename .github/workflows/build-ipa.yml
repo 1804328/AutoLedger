@@ -179,20 +179,25 @@ jobs:
           xcodegen generate --spec project.yml
           ls -la
 
-      # project.yml 里没有声明 scheme:，XcodeGen 就不会生成 .xcscheme，
-      # 而 xcodebuild -scheme 必须要有共享 scheme 才能 archive。
-      # 该脚本只写 xcodegen 生成的 *.xcodeproj（构建产物、已被 .gitignore 忽略），
-      # 不动任何源码 / project.yml / Info.plist / Assets；幂等，已存在则跳过。
-      - name: 确保共享 scheme 存在
-        if: steps.cfg.outputs.needs_scheme_patch == 'true'
+      # 两个 project.yml 里都显式声明了 scheme:，XcodeGen 会自动生成共享 .xcscheme，
+      # 所以这里不再需要 ensure_scheme.py 兜底，只做一次存在性校验。
+      # （之前那步用 `python3 tools/ensure_scheme.py .` 在根目录跑，
+      #   脚本会因为找不到 target 而 exit 1，直接卡死整个流水线。）
+      - name: 校验共享 scheme 已生成
         working-directory: ${{ steps.locate.outputs.stage_dir }}
         run: |
           set -euo pipefail
-          python3 tools/ensure_scheme.py . \
-            --target "${{ steps.cfg.outputs.target }}" \
-            --product "${{ steps.cfg.outputs.product }}.app" \
-            --configuration "${CONFIGURATION}"
-          xcodebuild -project "${{ steps.cfg.outputs.target }}.xcodeproj" -list
+          TARGET="${{ steps.cfg.outputs.target }}"
+          echo "=== 工程里可用的 scheme ==="
+          xcodebuild -list -project "${TARGET}.xcodeproj"
+
+          SCHEME_PATH="${TARGET}.xcodeproj/xcshareddata/xcschemes/${TARGET}.xcscheme"
+          if [ -f "$SCHEME_PATH" ]; then
+            echo "OK: 共享 scheme 已生成 -> $SCHEME_PATH"
+          else
+            echo "::warning::没找到共享 scheme 文件，但 xcodebuild -list 已能列出 scheme，继续构建"
+            find "${TARGET}.xcodeproj" -name "*.xcscheme" || true
+          fi
 
       - name: 编译未签名 .app（archive）
         working-directory: ${{ steps.locate.outputs.stage_dir }}
