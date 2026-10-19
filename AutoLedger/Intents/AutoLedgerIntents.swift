@@ -34,7 +34,7 @@ struct AddTransactionIntent: AppIntent {
         )
     }
 
-    static var openAppWhenRun: Bool = false
+    static var openAppWhenRun: Bool { false }
 
     @Parameter(title: "记账内容", description: "例如：早餐 12 元、打车 25、工资到账 8000")
     var text: String
@@ -55,7 +55,6 @@ struct AddTransactionIntent: AppIntent {
         }
     }
 
-    @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let store = LedgerStore.shared
 
@@ -110,7 +109,7 @@ struct AddAmountIntent: AppIntent {
         )
     }
 
-    static var openAppWhenRun: Bool = false
+    static var openAppWhenRun: Bool { false }
 
     @Parameter(title: "金额")
     var amount: Double
@@ -140,7 +139,6 @@ struct AddAmountIntent: AppIntent {
         }
     }
 
-    @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let store = LedgerStore.shared
         let kindValue: TxKind = (kind == .income) ? .income : .expense
@@ -186,11 +184,10 @@ struct MonthSummaryIntent: AppIntent {
         )
     }
 
-    static var openAppWhenRun: Bool = false
+    static var openAppWhenRun: Bool { false }
 
     init() {}
 
-    @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let store = LedgerStore.shared
         let s = store.summary(in: Date())

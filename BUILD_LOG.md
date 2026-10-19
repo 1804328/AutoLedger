@@ -122,4 +122,66 @@ Windows 上没法本地跑 `xcodebuild`，只能靠云端。如果第一次就�
 
 ---
 
+### 第 1 轮 · 2026-10-19 · 独立审计（未构建）
+
+**做法**：派一个独立 agent 做逐行审计，交叉核对 Apple 官方文档。这轮没有跑构建，但结论价值很高。
+
+**结果**：❌ 发现 1 个**必然失败**的配置错误
+
+**分类**：A 环境（构建配置）
+
+**判断依据**：错误发生在编译任何 Swift 文件之前，与代码质量无关。
+
+**本轮改动**（2 处，都属于配置）：
+1. `project.yml` + `skeleton/project.yml` — `SWIFT_VERSION: "5.9"` → `"5.0"`
+   - `SWIFT_VERSION` 是**语言模式**，只接受 `4.0 / 4.2 / 5.0 / 6.0`，不是编译器版本
+   - 写成 `5.9` 会直接报 `error: SWIFT_VERSION '5.9' is unsupported`
+   - 同时显式加 `SWIFT_STRICT_CONCURRENCY: minimal`
+   - **不要**改成 `6.0`：会把下面的 `@MainActor` / `static var` 问题从警告升级为错误
+2. `.github/workflows/build-ipa.yml` — `runs-on: macos-26` → `macos-14`
+   - `macos-26` 在公开仓库长期拿不到 runner（一直 queued）
+   - Xcode 选择逻辑改为通用版：默认 ≥15 直接用，否则挑 `sort -V` 最大
+   - 构建失败重试循环去掉 `Xcode_26` 硬编码
+
+**结论**：**`SWIFT_VERSION` 是这类工程最隐蔽的坑** —— 它看起来像编译器版本，实际是语言模式。以后任何 XcodeGen 工程都先检查这一行。
+
+---
+
+### 第 2 轮 · 2026-10-19 · 按审计建议加固
+
+**本轮改动**（3 处，都是消除 Swift 6 迁移风险）：
+1. `StatsView.swift` — `ForEach(Array(breakdown.enumerated()), id: \.element.id)` → `ForEach(breakdown)`
+   - 去掉「元组 keypath → 成员访问 → 元组解构」三层组合
+   - 注：Swift 5.9 其实**支持**元组元素 keypath，这条不是硬错误，属防御性修改
+2. `AutoLedgerIntents.swift` ×3 — `static var openAppWhenRun: Bool = false` → `static var openAppWhenRun: Bool { false }`
+   - 可变 static 属性在 Swift 6 是并发安全错误，且 iOS 18+ 已 deprecated
+3. `AutoLedgerIntents.swift` ×3 — 删掉 `perform()` 上的 `@MainActor`
+   - `AppIntent.perform()` 是非隔离要求，用 `@MainActor` 满足它在 Swift 6 是错误
+   - 而且**不需要**：`LedgerStore` 是普通 class，非 actor 隔离
+
+**踩坑记录（重要）**：
+- 第一次用 PowerShell `Set-Content` 改 workflow → 加了 **UTF-8 BOM** 且破坏了 YAML 缩进 → run#1 失败
+- 第二次用 PowerShell 正则批量改 `.swift` → 破坏括号平衡（27/30）并引入 CRLF → 从 git 恢复
+- **教训：改 Swift / YAML 一律用 `edit` 工具做精确替换，不要用 PowerShell 批量正则替换。**
+  PowerShell 的 `Set-Content` 默认带 BOM，`Get-Content -Raw` + 正则会破坏多字节字符与缩进。
+
+---
+
+### 第 3 轮 · 2026-10-19 · 排队问题排查
+
+**现象**：run#2、run#3 长期 `status: queued`，`runner_id: null`
+
+**排查过程**：
+1. 先怀疑 `macos-26` 标签不可用 → 改 `macos-14`，仍 queued
+2. 查同账号另一个仓库 `apple-` → 发现它的 run#12、#13 也 queued
+3. 而 `apple-` 的 run#9/#10/#11 **都成功过**（每次约 20 分钟）
+
+**结论**：**不是配置问题，是账户级并发限制** —— 免费账户同时只能跑 1 个 macOS job。当时有 4 个构建排队（`apple-` 的 #12 #13 + AutoLedger 的 #2 #3），先来先服务。
+
+**处置**：按用户选择，不取消其他仓库任务，等自然排队。
+
+**教训**：`queued` 长时间不动时，先看**同账号其他仓库**是否也在排队 —— 这是区分「配置错」和「排队」最快的方法。配置错通常会很快失败或直接报错，而不是无限 queued。
+
+---
+
 <!-- 从这里开始记录真实构建轮次 -->

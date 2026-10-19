@@ -190,7 +190,7 @@ struct StatsView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 20)
             } else {
-                ForEach(Array(breakdown.enumerated()), id: \.element.id) { idx, item in
+                ForEach(breakdown) { item in
                     VStack(spacing: 6) {
                         HStack(spacing: 10) {
                             CategoryBadge(category: item.category, size: 30)
@@ -216,7 +216,7 @@ struct StatsView: View {
                         }
                         .frame(height: 5)
                     }
-                    if idx < breakdown.count - 1 {
+                    if item.id != breakdown.last?.id {
                         Divider().padding(.vertical, 2)
                     }
                 }
