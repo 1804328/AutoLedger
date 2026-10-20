@@ -201,6 +201,34 @@ def ea(text):
     return extract_amount(text)
 
 
+# 状态栏版式：电量那一格常被认成一个裸整数（真机 IMG_1996 读成「934」）。
+# 它既会被纯数字兜底档当成金额，又会挤在 hero 旁边把「最高字/次高字」比值拉平。
+# 每条是 (文本, 字高, 距顶)。字高故意取了最坏情况：把正文全抬到接近主金额的 1/1.4，
+# 这样 Vision 只要行距稍微压小比例就过不了 1.5 阈值 —— 逼选择层真的去扔状态栏。
+# 解析器输入用的是**含状态栏的整页文本**（Swift 里 scan 是先滤后 join，更宽松），
+# 取严的一边才能让「删掉 drop_status」变成一条会红的断言。
+STATUS_CASES = [
+    ("支付宝账单详情·真机字高+电量934", [
+        ("15:57", .0192, .037), ("934", .0192, .037),
+        ("账单详情", .0222, .096), ("全部账单", .0222, .096),
+        ("伊清烧烤", .0192, .220), ("-18.00", .0328, .264), ("交易成功", .0192, .305),
+        ("支付时间", .0159, .359), ("2026-10-18 22:04:59", .0151, .359),
+        ("付款方式", .0192, .399), ("花呗>", .0222, .399),
+        ("支付奖励", .0192, .478), ("立即领取4积分", .0171, .481),
+        ("收款方全称", .0186, .524), ("**发(个人)", .0207, .524),
+        ("A1", .0066, .982), ("AA收款", .0207, .983),
+    ], 18.00, "伊清烧烤"),
+
+    ("同版式·Vision 行距把比例压到 1.4", [
+        ("15:57", .024, .037), ("934", .024, .037),
+        ("账单详情", .024, .096),
+        ("伊清烧烤", .024, .220), ("-18.00", .0336, .264), ("交易成功", .024, .305),
+        ("支付时间", .024, .359), ("2026-10-18 22:04:59", .024, .359),
+        ("支付奖励", .024, .478), ("立即领取4积分", .024, .481),
+        ("收款方全称", .024, .524), ("**发(个人)", .024, .524),
+    ], 18.00, "伊清烧烤"),
+]
+
 print(f"{'版式':<24} {'分行':<7} {'结果':>10} {'依据':<6} {'日期':<11} {'确认':<4} {'备注':<16} 候选")
 print("-" * 122)
 fails = 0
@@ -221,4 +249,28 @@ for name, rows, want_amt, want_note, want_date, want_confirm in CASES:
               f"{[L.money(c['amount']) for c in cands[:4]]} {'' if ok else '← FAIL'}")
 print("-" * 122)
 print(f"{total - fails}/{total} 通过，失败 {fails} 条")
+
+
+def ratio(cs):
+    hs = sorted((c["height"] for c in cs), reverse=True)
+    return hs[0] / hs[1] if len(hs) > 1 else float("inf")
+
+
+print()
+print(f"{'状态栏版式':<34} {'解析器':>8} {'结果':>8} {'依据':<6} {'比例(留/扔)':>13} {'候选':<22} {'商户':<10}")
+print("-" * 122)
+for name, lines, want_amt, want_merchant in STATUS_CASES:
+    full = " ".join(l[0] for l in lines)
+    p = ea(full)[0]
+    got, why, _n, merchant, _d, cands, _need = L.scan(lines, p, full, ea, TODAY)
+    keep_ratio = ratio(L.rank(lines, ea))
+    ok = got == want_amt and merchant == want_merchant
+    total += 1
+    if not ok:
+        fails += 1
+    print(f"{name[:32]:<34} {p:>8} {('—' if got is None else f'{got:.2f}'):>8} {why:<6} "
+          f"{keep_ratio:>6.2f} /{ratio(cands):<6.2f} "
+          f"{str([L.money(c['amount']) for c in cands]):<22} {(merchant or '—'):<10} {'' if ok else '← FAIL'}")
+print("-" * 122)
+print(f"合计 {total - fails}/{total} 通过，失败 {fails} 条")
 sys.exit(1 if fails else 0)

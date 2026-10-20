@@ -131,6 +131,32 @@ r.append(cmp("ABS_DATE", swift_array(np, "absoluteDatePattern"), [P.ABS_DATE.pat
 rel = re.findall(r'\("([^"]+)",\s*(-?\d+)\)', np)
 r.append(cmp("relative 词表", [w for w, _ in rel], P.RELATIVE, order_matters=False))
 
+
+def cmp_num(name, got, exp):
+    ok = got is not None and abs(got - exp) < 1e-9
+    print(("same  " if ok else "DIFF  ") + name + f"  swift={got} py={exp}")
+    return ok
+
+
+def swift_const(name):
+    m = re.search(r"static let " + name + r"\s*:\s*CGFloat\s*=\s*([\d.]+)", ocr)
+    return float(m.group(1)) if m else None
+
+
+def swift_inline(pattern):
+    m = re.search(pattern, ocr)
+    return float(m.group(1)) if m else None
+
+
+# 阈值是写在 Swift 表达式里的字面量，改一个数字两边就悄悄分叉，逐条比数值
+r.append(cmp_num("statusBarBand", swift_const("statusBarBand"), L.STATUS_BAR_BAND))
+r.append(cmp_num("hero 比例（scan 里 byHeight[1].height * N）",
+                 swift_inline(r"byHeight\[1\]\.height \* ([\d.]+)"), L.HERO_RATIO))
+r.append(cmp_num("歧义比例（ambiguous 里 cands[1].height * N）",
+                 swift_inline(r"cands\[1\]\.height \* ([\d.]+)"), L.AMBIG_RATIO))
+r.append(cmp_num("锚点加权（score = relative + N if anchor）",
+                 swift_inline(r"relative \+ \([\w.]+ \? ([\d.]+) : 0\)"), L.ANCHOR_WEIGHT))
+
 print()
 print("全部一致：Python 绿的这套逻辑确实就是 Swift 里的那套"
       if all(r) else "存在差异：Python 侧全绿不代表 Swift 侧全绿")

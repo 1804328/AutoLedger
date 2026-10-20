@@ -12,8 +12,9 @@ Windows 上没有 swiftc，跑不了 Swift 测试；Vision 又只在真机上有
 |---|---|
 | `parser_check.py` | `NaturalParser.extractAmount` 五档取金额的 31 条回归（import 时自动跑完并打印） |
 | `receipt_logic.py` | `ReceiptOCR` 的候选排序 / hero 判定 / 商户名 / 汇总页判定的移植实现（被下面两个引用） |
-| `corpus_check.py` | 21 种支付页版式 × merged/split 两种 Vision 分行习惯 = 42 条断言 |
+| `corpus_check.py` | 21 种支付页版式 × merged/split 两种 Vision 分行习惯 = 42 条断言，另加 2 条状态栏版式 |
 | `receipt_check.py` | 真机那张支付宝账单详情（实测字高）跑当前逻辑，7 条断言 |
+| `real_ocr.py` | **拿真 OCR 引擎（RapidOCR/onnxruntime，本机推理）跑真截图**，量识别框字高并断言金额/商户/日期 |
 | `real_geometry.py` | 给一张截图，按水平投影量出每行文字的实际像素高度，`--montage` 出图供逐行核对 |
 | `check_icu.js` | 用第二个正则引擎（V8）复核 Swift 侧那批模式：语法合法 + 千分位语义一致 |
 | `../parity_check.py` | 把 Swift 里的词表/正则逐条和这里的移植比对，防止「Python 绿了但仓库里是另一套」 |
@@ -26,12 +27,25 @@ Windows 上没有 swiftc，跑不了 Swift 测试；Vision 又只在真机上有
 node tools/ocr_probe/check_icu.js
 ```
 
+`real_ocr.py` 存在的理由：`real_geometry.py` 量的是**墨迹行高**，而 OCR 引擎返回的是**识别框高度**，
+框带行距，比值必然被压小 —— hero 判定吃的正是这个比值。拿真引擎跑一次才发现两件事：
+状态栏的电量被认成一个孤零零的「934」，它既会被纯数字兜底档当成金额，又把
+最高字/次高字从 5.00 压到 1.71（只比 1.5 阈值高一点点）；还有收款方全称「**发(个人)」
+的框比商户名还高，会把备注抢走。RapidOCR 不是 Vision，但它同属「检测框 + 行文本」这一类输出，
+量几何量级比墨迹投影近一层。截图路径不入库，要重跑自己传：
+
+```
+python tools/ocr_probe/real_ocr.py            # 默认拿 IMG_1996 对真值
+python tools/ocr_probe/real_ocr.py /路径/IMG_xxxx.JPG
+```
+
 改选择逻辑时的顺序：先在 `receipt_logic.py` / `parser_check.py` 里改到全绿，
 再原样搬进 Swift，最后跑 `python tools/parity_check.py` 确认两边还是一回事。
 
 ```
 PYTHONIOENCODING=utf-8 python tools/ocr_probe/corpus_check.py
 PYTHONIOENCODING=utf-8 python tools/ocr_probe/receipt_check.py
+PYTHONIOENCODING=utf-8 python tools/ocr_probe/real_ocr.py
 PYTHONIOENCODING=utf-8 python tools/parity_check.py
 PYTHONIOENCODING=utf-8 python tools/check_swift.py
 ```

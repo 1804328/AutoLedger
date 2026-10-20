@@ -38,6 +38,13 @@ NAME_SUFFIX_BLOCK = ["成功", "失败", "结束", "完成", "退款", "支付",
                      "收款", "编号", "单号", "总价", "金额", "数量", "件数", "运费"]
 # 还没真花出去的钱
 UNPAID_WORDS = ["待支付", "未支付", "应付", "预计", "待付款"]
+# 对位 ReceiptOCR.statusBarBand：手机截图顶部那条状态栏（电量常被认成一个裸整数）
+STATUS_BAR_BAND = 0.06
+# 决定「这页有没有唯一主角数字」的两个比例，Swift 里是写在表达式里的字面量
+HERO_RATIO = 1.5
+AMBIG_RATIO = 1.15
+# 对位 Swift: score = relative + (isAnchorLine ? 1.2 : 0)
+ANCHOR_WEIGHT = 1.2
 
 ABS_DATE = re.compile(r"(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})[日号]?(?:\s*(\d{1,2}):(\d{2}))?")
 CJK = re.compile(r"[一-鿿]")
@@ -49,6 +56,26 @@ def money(v):
 
 def has_cjk(t):
     return CJK.search(t) is not None
+
+
+def line_top(line):
+    """这行距图片顶部的归一化距离。老用例只写 (文本, 字高)，没位置就返回 None。"""
+    return line[2] if len(line) > 2 else None
+
+
+def is_status_bar_number(line):
+    """顶部状态栏那种 1~4 位裸整数（电量常被认成「934」）。带货币符或汉字的行不受影响。"""
+    top = line_top(line)
+    if top is None or top >= STATUS_BAR_BAND:
+        return False
+    t = line[0].strip()
+    bare = t[:-1] if t.endswith("%") else t
+    return 1 <= len(bare) <= 4 and bare.isdigit()
+
+
+def drop_status(lines):
+    """状态栏那行既会被纯数字兜底档当成金额，又会让真正的大字数字失去 hero 优势，先扔掉。"""
+    return [l for l in lines if not is_status_bar_number(l)]
 
 
 FIELD_PREFIXES = ["商户", "付款方", "收款方", "对方", "户名", "店铺", "商家", "商品", "品名"]
@@ -69,6 +96,8 @@ def looks_like_name(t):
         return False
     if any(c.isdigit() for c in t) or ">" in t:
         return False
+    if "*" in t:                          # 收款方全称「**发(个人)」是打码名，不是商户
+        return False
     if any(lb in t for lb in PAGE_LABELS):
         return False
     if any(w in t for w in ANCHOR_WORDS) or any(w in t for w in REJECT_WORDS):
@@ -82,7 +111,8 @@ def looks_like_name(t):
 
 def rank(lines, extract_amount):
     raw = []
-    for i, (text, h) in enumerate(lines):
+    for i, line in enumerate(lines):
+        text, h = line[0], line[1]
         got = extract_amount(text)[0]
         if not got or got <= 0:
             continue
@@ -112,7 +142,7 @@ def rank(lines, extract_amount):
     for c in out:
         rel = c["height"] / tallest if tallest else 0
         anchored = any(w in c["ctx"] for w in ANCHOR_WORDS)
-        c["score"] = rel + (1.2 if anchored else 0)
+        c["score"] = rel + (ANCHOR_WEIGHT if anchored else 0)
         c["anchor"] = anchored
     out.sort(key=lambda c: -c["score"])
     return out
@@ -123,18 +153,18 @@ def merchant_name(lines, index):
     支付页的商户名就是页面上第二大的字，比挨着金额的那行可靠 ——
     挨着金额的常常是「实付」「神券优惠」这种字段名。"""
     best = None
-    for i, (t, h) in enumerate(lines):
-        name = strip_field_prefix(t)
+    for i, line in enumerate(lines):
+        name = strip_field_prefix(line[0])
         if not looks_like_name(name):
             continue
-        key = (round(h, 4), 1 if i < index else 0)
+        key = (round(line[1], 4), 1 if i < index else 0)
         if best is None or key > best[0]:
             best = (key, name)
     return best[1] if best else None
 
 
 def summary_page(lines):
-    joined = " ".join(t for (t, _h) in lines)
+    joined = " ".join(l[0] for l in lines)
     return any(re.search(p, joined) for p in SUMMARY_PATTERNS)
 
 
@@ -143,11 +173,11 @@ def ambiguous(cands):
     if len(cands) < 2:
         return False
     a, b = cands[0], cands[1]
-    return (not a["anchor"]) and a["height"] <= b["height"] * 1.15
+    return (not a["anchor"]) and a["height"] <= b["height"] * AMBIG_RATIO
 
 
 def parse_abs_date(lines, today=date(2026, 10, 20)):
-    m = ABS_DATE.search(" ".join(t for (t, _h) in lines))
+    m = ABS_DATE.search(" ".join(l[0] for l in lines))
     if not m:
         return None
     d = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
@@ -158,6 +188,7 @@ def parse_abs_date(lines, today=date(2026, 10, 20)):
 
 def scan(lines, parsed_amount, parsed_note, extract_amount, today=date(2026, 10, 20)):
     """对位 ReceiptOCR.scan：返回 (金额, 依据, 备注, 商户, 日期, 候选, 需人工确认)"""
+    lines = drop_status(lines)
     cands = rank(lines, extract_amount)
     amount, why = parsed_amount, "沿用解析器"
     hero = None
@@ -165,7 +196,7 @@ def scan(lines, parsed_amount, parsed_note, extract_amount, today=date(2026, 10,
         by_h = sorted(cands, key=lambda c: -c["height"])
         # 有"主角数字"（明显比第二名大一号）就用它；没有才退回锚点+字高的打分。
         # 支付成功页一定有个大字金额；明细列表页全是同字号，只能靠锚点。
-        if len(by_h) == 1 or by_h[0]["height"] >= 1.5 * by_h[1]["height"]:
+        if len(by_h) == 1 or by_h[0]["height"] >= HERO_RATIO * by_h[1]["height"]:
             hero = by_h[0]
     best = hero or (cands[0] if cands else None)
     if best and best["amount"] != parsed_amount:
