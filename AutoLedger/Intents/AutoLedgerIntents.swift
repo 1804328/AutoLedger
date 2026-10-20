@@ -86,7 +86,10 @@ struct AddTransactionIntent: AppIntent {
             date: result.date,
             source: .shortcut
         )
-        store.add(tx)
+        // 截图自动化和手动调用可能针对同一次消费各跑一次，这里兜住重复
+        guard store.addAutomated(tx) != nil else {
+            return .result(dialog: IntentDialog(stringLiteral: "60 秒内已有同样金额的记录，没有重复入账"))
+        }
 
         let cat = store.category(id: categoryID)
         let money = Fmt.money(amount)
@@ -252,12 +255,14 @@ enum URLRouter {
                 let r = NaturalParser.parse(text, rules: store.merchantRules, categories: store.allCategories)
                 guard let amount = r.amount, amount > 0 else { return "金额识别失败" }
                 let cid = r.categoryID ?? (r.kind == .expense ? "other_expense" : "other_income")
-                store.add(Transaction(
+                let tx = Transaction(
                     kind: r.kind, amount: amount, categoryID: cid,
                     bookID: bookID, note: r.note.isEmpty ? text : r.note,
                     date: r.date, source: .url
-                ))
-                return "已记账 \(Fmt.money(amount)) 元"
+                )
+                return store.addAutomated(tx) != nil
+                    ? "已记账 \(Fmt.money(amount)) 元"
+                    : "60 秒内已有同金额记录，未重复入账"
             }
 
             // 结构化参数
@@ -270,11 +275,13 @@ enum URLRouter {
                let c = store.allCategories.first(where: { $0.name == cn && $0.kind == kind }) {
                 cid = c.id
             }
-            store.add(Transaction(
+            let tx = Transaction(
                 kind: kind, amount: Decimal(amt).roundedTo2, categoryID: cid,
                 bookID: bookID, note: value("note") ?? "", date: Date(), source: .url
-            ))
-            return "已记账 \(Fmt.money(Decimal(amt))) 元"
+            )
+            return store.addAutomated(tx) != nil
+                ? "已记账 \(Fmt.money(Decimal(amt))) 元"
+                : "60 秒内已有同金额记录，未重复入账"
 
         case "summary":
             let s = store.summary(in: Date())

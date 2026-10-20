@@ -14,6 +14,7 @@ struct ShortcutGuideView: View {
                     intro
                     quickStart
                     urlSection
+                    scanSection
                     autoSection
                     voiceSection
                     tipSection
@@ -34,9 +35,9 @@ struct ShortcutGuideView: View {
 
     private var intro: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("三种自动记账方式")
+            Text("四种自动记账方式")
                 .font(.headline)
-            Text("装好 App 后，「快捷指令」里已经自动出现「自动记账」的两个动作，不需要手动配置。")
+            Text("装好 App 后，「快捷指令」里已经自动出现「记一笔」和「本月收支」两个动作，不需要手动配置。找的时候按动作名搜，不按 App 名。")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -131,23 +132,75 @@ struct ShortcutGuideView: View {
 
     // MARK: 方式三
 
-    private var autoSection: some View {
+    private var scanSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            stepHeader(number: 3, title: "做成全自动（推荐）")
+            stepHeader(number: 3, title: "截图入账（识别支付结果页）")
 
-            Text("在「快捷指令」App 里新建一个自动化，让系统在特定时机自动记账：")
+            Text("支付完随手截一张图，App 在你手机上用 Vision 认出文字，再解析金额、日期和商户。不用搭任何快捷指令：")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            autoRow(icon: "creditcard.fill", title: "收到付款通知时", detail: "自动化 → 收到付款 → 添加「自动记账」动作")
+            autoRow(icon: "camera.viewfinder", title: "首页右上角点取景框", detail: "选一张支付截图，本机识别，不上传、不联网")
+            autoRow(icon: "photo.on.rectangle.angled", title: "从相册选那张截图", detail: "只读你选中的这一张，App 不申请相册权限")
+            autoRow(icon: "text.viewfinder", title: "自动识别并填好", detail: "认得出「实付款 25.00」「合计 ￥1286.50」这类账单锚点")
+            autoRow(icon: "checkmark.seal.fill", title: "确认无误再入账", detail: "分类不对可以当场改，金额也能重填")
+
+            Divider()
+
+            Text("想让它自己跑（可选，在快捷指令里两步）：")
+                .font(.subheadline.weight(.medium))
+
+            Text("新建自动化 → 触发条件选「截屏」→ 添加动作「提取图像中的文本」→ 再添加「记一笔」，把它的 text 参数设成上一步的「文本」变量，并关掉「运行前通知」。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                bullet("60 秒内同一账本出现同样金额的记录，会自动跳过去重，不会重复入账。")
+                bullet("账单页往往有好几个数字，解析器优先取「实付款 / 合计 / 扣款」这类锚点，其次才取带单位的金额。")
+                bullet("识别不准时不用删重来：入账前当场改分类和金额就行。")
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        )
+    }
+
+    private func bullet(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 7) {
+            Image(systemName: "circle.fill")
+                .font(.system(size: 4))
+                .foregroundStyle(Theme.accentDeep)
+                .padding(.top, 6)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: 方式四
+
+    private var autoSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            stepHeader(number: 4, title: "挂到系统时机上")
+
+            Text("「快捷指令」→ 自动化 → 新建自动化，可以选这些时机：")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            autoRow(icon: "text.viewfinder", title: "截屏时", detail: "存了截图就自动记一笔，配「提取图像中的文本」用")
+            autoRow(icon: "hand.tap.fill", title: "轻点背面", detail: "设置 → 辅助功能 → 轻点背面 → 指定快捷指令，付完款反手敲两下")
+            autoRow(icon: "bell.badge.fill", title: "收到通知时", detail: "仅限确实会弹通知的场景，比如银行 App 的扣款提醒；支付成功页通常没有通知")
             autoRow(icon: "app.badge.fill", title: "打开某个 App 时", detail: "例如打开外卖 App 后弹一下记账")
             autoRow(icon: "clock.fill", title: "每天固定时间", detail: "每晚 22:00 提醒补记当天支出")
-            autoRow(icon: "hand.tap.fill", title: "轻点背面", detail: "设置 → 辅助功能 → 轻点背面 → 选快捷指令")
             autoRow(icon: "square.grid.2x2.fill", title: "加到主屏幕/小组件", detail: "快捷指令可以放桌面，一点即记")
 
             Divider()
 
-            Text("提示：iOS 不允许 App 读取其他 App 的支付数据，所以「自动」的最佳实践是：把记账动作挂到系统事件上，一句话或一次点击完成，不用手填表单。")
+            Text("边界说清楚：iOS 不允许 App 读取其他 App 的支付数据，所以「自动」的上限是——系统帮你抓一张截图或一段屏幕文字，剩下的识别和入账由 App 完成。省掉的是「打开 App → 填表单」，不是「支付」这一步本身。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.top, 2)

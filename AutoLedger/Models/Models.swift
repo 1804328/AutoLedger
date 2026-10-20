@@ -32,6 +32,7 @@ enum TxSource: String, Codable, CaseIterable, Identifiable {
     case url
     case recurring
     case imported
+    case screenshot
 
     var id: String { rawValue }
 
@@ -42,6 +43,7 @@ enum TxSource: String, Codable, CaseIterable, Identifiable {
         case .url: return "链接"
         case .recurring: return "周期自动"
         case .imported: return "导入"
+        case .screenshot: return "截图识别"
         }
     }
 
@@ -52,6 +54,7 @@ enum TxSource: String, Codable, CaseIterable, Identifiable {
         case .url: return "link"
         case .recurring: return "arrow.triangle.2.circlepath"
         case .imported: return "square.and.arrow.down"
+        case .screenshot: return "camera.viewfinder"
         }
     }
 }

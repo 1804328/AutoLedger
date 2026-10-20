@@ -55,6 +55,7 @@ struct RootView: View {
 struct HomeView: View {
     @EnvironmentObject var store: LedgerStore
     @State private var showAdd = false
+    @State private var showScan = false
     @State private var quickText = ""
     @State private var toast: String?
     @State private var showBookPicker = false
@@ -107,6 +108,14 @@ struct HomeView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        showScan = true
+                    } label: {
+                        Image(systemName: "camera.viewfinder")
+                            .font(.title3)
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         showAdd = true
                     } label: {
                         Image(systemName: "plus.circle.fill")
@@ -116,6 +125,10 @@ struct HomeView: View {
             }
             .sheet(isPresented: $showAdd) {
                 AddTransactionView()
+                    .environmentObject(store)
+            }
+            .sheet(isPresented: $showScan) {
+                ReceiptScanSheet()
                     .environmentObject(store)
             }
             .sheet(isPresented: $showBookPicker) {

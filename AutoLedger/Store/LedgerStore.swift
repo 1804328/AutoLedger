@@ -204,6 +204,25 @@ final class LedgerStore: ObservableObject {
         persist()
     }
 
+    /// 命中重复的机器入账记录（同账本、同金额、60 秒内）。
+    /// 只管自动化来源：连记两笔同金额是真实的人工场景（买两杯奶茶），不能吞。
+    private func automatedDuplicate(of t: Transaction) -> Transaction? {
+        guard t.source != .manual && t.source != .imported else { return nil }
+        return transactions.first { old in
+            old.bookID == t.bookID
+                && old.kind == t.kind
+                && old.amount == t.amount
+                && abs(old.date.timeIntervalSince(t.date)) < 60
+        }
+    }
+
+    /// 自动化入口专用（截图识别 / 快捷指令 / URL）。重复则跳过并返回 nil，
+    /// 因为同一次消费记两笔比漏记更难被发现。
+    func addAutomated(_ tx: Transaction) -> Transaction? {
+        if automatedDuplicate(of: tx) != nil { return nil }
+        return add(tx)
+    }
+
     func delete(_ tx: Transaction) {
         transactions.removeAll { $0.id == tx.id }
         persist()
