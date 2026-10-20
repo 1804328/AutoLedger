@@ -183,19 +183,46 @@ jobs:
       # 所以这里不再需要 ensure_scheme.py 兜底，只做一次存在性校验。
       # （之前那步用 `python3 tools/ensure_scheme.py .` 在根目录跑，
       #   脚本会因为找不到 target 而 exit 1，直接卡死整个流水线。）
+      # 这一步只做诊断，不阻塞构建：即使 xcodebuild -list 报错也继续往下走，
+      # 让真正的 archive 步骤给出权威结果（并把它自己的日志写进 summary）。
       - name: 校验共享 scheme 已生成
+        continue-on-error: true
         working-directory: ${{ steps.locate.outputs.stage_dir }}
         run: |
           set -euo pipefail
           TARGET="${{ steps.cfg.outputs.target }}"
-          echo "=== 当前目录 ==="
+          LOG="$RUNNER_TEMP/scheme-check.log"
+          exec > >(tee "$LOG") 2>&1
+
+          echo "=== pwd ==="
           pwd
-          echo "=== 工程里可用的 scheme ==="
-          xcodebuild -list -project "${TARGET}.xcodeproj" || {
-            echo "::error::xcodebuild -list 失败，检查 ${TARGET}.xcodeproj 是否存在"
-            ls -la
-            exit 1
-          }
+          echo "=== ls ==="
+          ls -la
+          echo "=== 找 .xcodeproj ==="
+          ls -d *.xcodeproj 2>/dev/null || echo "（没有 .xcodeproj）"
+          echo "=== xcodebuild -list ==="
+
+          set +e
+          xcodebuild -list -project "${TARGET}.xcodeproj"
+          rc=$?
+          set -e
+
+          {
+            echo "## scheme 校验日志"
+            echo ""
+            echo "- pwd: \`$(pwd)\`"
+            echo "- target: \`${TARGET}\`"
+            echo "- exit code: \`${rc}\`"
+            echo ""
+            echo '```'
+            cat "$LOG" 2>/dev/null | head -n 80
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::xcodebuild -list 失败（exit $rc）"
+            exit "$rc"
+          fi
 
           SCHEME_PATH="${TARGET}.xcodeproj/xcshareddata/xcschemes/${TARGET}.xcscheme"
           if [ -f "$SCHEME_PATH" ]; then
