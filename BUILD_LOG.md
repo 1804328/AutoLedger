@@ -225,3 +225,80 @@ Checkout                    ✅
 ---
 
 <!-- 从这里开始记录真实构建轮次 -->
+
+---
+
+### 第 5 轮 · 2026-10-20 · run#5–#11：四次「改 workflow」其实都在绕圈
+
+**背景**：第 4 轮骨架绿灯之后，连续 7 次构建全部失败，但没有记录进本文件。这次重建 workflow 时顺手把 GitHub API 的真实数据拉出来补齐。
+
+#### 构建台账（数据来源：`GET /repos/1804328/AutoLedger/actions/runs`）
+
+| run | commit | stage | runner | 结果 | 耗时 | 失败步骤 |
+|---|---|---|---|---|---|---|
+| #2 | `6c61d9b` | skeleton | **macos-26** | ✅ | 19m50s | — |
+| #3 | `09eb6ee` | skeleton | macos-14 | ✅ | 22m20s | — |
+| #4 | `2528531` | skeleton | macos-14 | ✅ | 12m02s | — |
+| #5 | `8c2dca7` | **app** | macos-14 | ❌ | 13m09s | 编译未签名 .app（archive） |
+| #6 | `fa0463c` | app | macos-14 | ❌ | 2m56s | 确保共享 scheme 存在 |
+| #7 | `79b6499` | app | macos-14 | ❌ | 0m27s | 校验共享 scheme 已生成 |
+| #8 | `c97724e` | app | macos-14 | ❌ | 0m24s | 校验共享 scheme 已生成 |
+| #9 | `349797f` | app | macos-14 | ❌ | 4m44s | 编译未签名 .app（archive） |
+| #10 | `99d8c7b` | — | — | ❌ | 0m00s | workflow 文件是 0 字节 |
+| #11 | `952d226` | app | **macos-26** | ❌ | 3m46s | 编译未签名 .app（archive） |
+
+#### ❌ 证伪一条：「objectVersion 77 → 必须 macos-26」（`99d8c7b` 的结论）
+
+这条是我在重建 workflow 时先按 commit message 写进注释、事后才被数据推翻的。三条反证：
+
+1. **run#5 在 macos-14 上真正编译了 13m09s**。pbxproj 若真读不了，会在秒级失败，不可能编十几分钟。
+2. **run#9 在 macos-14 上 step 8（`xcodebuild -list`）是绿的** —— 这一步就是拿镜像里的 Xcode 去解析生成的 `.xcodeproj`。能列出 scheme，说明工程格式读得懂。
+3. **run#11 换到 macos-26，失败步骤没变、耗时几乎没变（3m46s vs 4m44s）**。换 runner 没有影响结果。
+
+> **而且这条改法本身就违反了分诊表下面那条核心判据**：「骨架绿、主工程挂 = 代码问题，别去改 workflow。」
+> 骨架在 #2/#3/#4 连绿三次，主工程从 #5 起一直挂 —— 从 #5 那一刻起就该判定 C 类，直接去读 build.log。
+> #6/#7/#8/#9 四轮里有三轮在修 scheme 校验步骤（把阻塞改成诊断），那是在修**症状的显示方式**，不是在修编译错误。
+
+**教训：连续同一步骤失败时，先问「失败点和耗时有没有随我的改动而变化」。** #7/#8 只跑 24–27 秒就挂，和 #5/#9 跑几分钟才挂，是两类完全不同的失败；把它们当成同一个问题连改四轮，就是没做这个区分。
+
+#### ⚠️ 事故：workflow 文件被清空，且清空状态被 commit 固化
+
+`99d8c7b` 那次改动用 PowerShell `ReadAllText` 读 workflow 失败拿到 `null`，随后 `WriteAllText(null)` 把整个文件写成 0 字节 —— 于是那次 commit message 里描述的 macos-26 改动**从来没进过文件内容**（`git show HEAD:.github/workflows/build-ipa.yml` 是 0 字节）。
+
+两个额外坑：
+- **`git status` 干净不等于文件没问题**。空文件已经被提交，工作区当然没有改动，看不出异常。改完关键文件要断言非空：`test -s <file>`。
+- **`.backup` 也是坏的**。`build-ipa.yml.backup` 是 UTF-8 被按 GBK 往返读写后的乱码，拿来恢复只会恢复出乱码注释 —— 这也是本次没有用备份、而是从 `349797f` 恢复的原因。
+
+第 2 轮已经写过「不要用 PowerShell 批量改正则」，这次的补充是：**同一套 `ReadAllText/WriteAllText` 连单文件读写都会把文件清掉，PowerShell 根本不该出现在这条链路上。** 改 Swift / YAML 一律用编辑工具做精确替换。
+
+#### 本轮改动（1 处）
+
+`build-ipa.yml`：删掉坑 6 里 objectVersion 的因果判断，改成「macos-26 由隔壁 `apple-` 仓库 run#10–#13 四次绿灯证明可用；macos-14 也编到过 archive，失败与 runner 无关」。
+
+#### 关于 macos-26 的 runner 可用性（修正第 1、3 轮）
+
+第 1 轮写「macos-26 在公开仓库长期拿不到 runner」，第 3 轮已怀疑是账户级并发限制。现在有两个独立佐证：
+
+- **run#2 本身就是 macos-26 且成功**（19m50s，见上表）—— 当时就被误判成 macos-14 了。
+- 同账号 `apple-` 仓库用 `runs-on: macos-26` + `-ge 26` 门槛，run#10–#13 全部 success。
+
+所以第 1 轮那条「macos-14 最稳、macos-26 拿不到机器」的结论不成立，已从 workflow 注释里清除。
+
+---
+
+### 第 6 轮 · 待办 · 真正的拦路虎还没看过一眼
+
+**现状**：run#5 / #9 / #11 三次都在 archive 步骤因同一类代码错误失败，但**我们至今没有读过任何一条真实 `error:`**。
+
+**为什么读不到**：workflow 早就把错误写进了 Job Summary（`fa0463c` 的初衷是「公开可读、不用下载需鉴权的日志包」），但实测两条路都不通 ——
+- 未登录浏览器打开 job 页面，日志区和 Job Summary 面板**根本不渲染**（页面只剩步骤名列表）；
+- `GET /actions/runs/{id}/logs` 匿名访问返回 **403**；
+- annotations API 只给了 `Process completed with exit code 1.`（step 日志第 4236 行），没有错误正文。
+
+> **`fa0463c` 想要的「公开可读」实际上没有实现。** Job Summary 只对已登录访客可见，和它想避开的日志包权限模型是同一套。
+
+**下一步二选一**（别两边都做）：
+1. **登录 GitHub 打开** [run#11 的 job 页面](https://github.com/1804328/AutoLedger/actions/runs/39377209064/job/118477926173)，读 Job Summary 里的 `error:` 列表 → 按分诊表 C 类逐条修 Swift。**成本最低，优先做这个。**
+2. 若还想让未登录也能看，就把 `summarize()` 里的错误行同时用 `::error::` workflow 命令打出来（annotations API 匿名可读）。代价是每次失败要重新烧一轮构建。
+
+**注意**：run#11 有一条 notice —— `Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.`。排队久是全局容量问题，不是配置问题，参考第 3 轮处置。

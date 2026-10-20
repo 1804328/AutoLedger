@@ -19,8 +19,10 @@ name: Build unsigned IPA
 # 4) 打包 ipa 必须用 `zip -qry`（-y 保留符号链接），普通 zip 会破坏 .app 内部结构。
 # 5) macOS 镜像里预装多个 Xcode，但**只有默认版本预装了 iOS 平台组件**；
 #    切换 Xcode 后如果缺 iOS SDK，构建会失败，所以要保留下面「选 Xcode + 失败换版本重试」的逻辑。
-# 6) macos-14 上 brew 装的最新版 XcodeGen 生成的 pbxproj 是 objectVersion 77（Xcode 26 格式），
-#    镜像里的 Xcode 15/16 读不了 → 卡在工程解析阶段。所以 runner 必须用 macos-26。
+# 6) runner 标签不是当前的拦路虎。macos-14 与 macos-26 都已跑到 archive 步骤
+#    （run#5 编译 13m09s、run#9 4m44s、run#11 3m46s，失败点完全一致），
+#    所以「objectVersion 77 需要 Xcode 26」的判断不成立，别再往这个方向改。
+#    真正待办：读 run#5/#9/#11 的 error: 正文，那是主工程的代码问题。详见 BUILD_LOG 第 5 轮。
 
 on:
   workflow_dispatch:
@@ -66,9 +68,10 @@ env:
 
 jobs:
   build:
-    # 见坑 6：objectVersion 77 → 必须 macos-26（macos-14 最高 Xcode 16，解析不了工程）。
-    # 注意：唯一一次绿灯的骨架构建（run#2）跑在 macos-14 上，macos-26 还从未成功跑过一次。
-    # 若长时间 queued，先按 BUILD_LOG 第 3 轮判断是不是账户级并发限制，别急着改回 macos-14。
+    # macos-26 可用性已被两处实证（不需要再改回 macos-14 试）：
+    #   run#2 骨架构建在 macos-26 上成功；隔壁 apple- 仓库 macos-26 连绿四次。
+    # 但 runner 版本不是当前失败原因，见坑 6。
+    # 长时间 queued 是账户级并发 + 全局容量限制，不代表标签不可用，见 BUILD_LOG 第 3 轮。
     runs-on: macos-26
     timeout-minutes: 90
 
@@ -118,8 +121,8 @@ jobs:
           echo "默认 Xcode 主版本: ${DEFAULT_MAJOR:-未知}"
 
           # 策略：优先用默认 Xcode（镜像只为默认版本预装 iOS 平台组件）。
-          # 工程格式要求 Xcode 26，所以门槛设成 26；低于它才去找版本号最大的可用 Xcode。
-          # 注意：按版本号排序用 sort -V，不能按字母序取 head。
+          # 门槛设成 26 是因为 macos-26 镜像默认即 Xcode 26，正常会走「直接使用」分支；
+          # 万一默认版本更低，才退回去找版本号最大的可用 Xcode（sort -V，不能按字母序取 head）。
           if [ -n "${DEFAULT_MAJOR:-}" ] && [ "${DEFAULT_MAJOR}" -ge 26 ] 2>/dev/null; then
             echo "默认 Xcode ${DEFAULT_MAJOR}.x 满足要求，直接使用"
           else
