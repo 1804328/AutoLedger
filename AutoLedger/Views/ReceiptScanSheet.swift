@@ -107,9 +107,19 @@ struct ReceiptScanSheet: View {
                     color: .secondary)
             }
 
+            // 汇总页 / 一堆同字号数字：解析器故意不猜，这里得说清为什么空着
+            if scan.needsConfirmation, chosenAmount(scan) == nil {
+                Label("这一页没有唯一答案，点下面一个数字，或直接手动输入",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(Theme.expense)
+            }
+
             if scan.candidates.count > 1 {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("这一页里有好几个数字，点一下真正要记的那个：")
+                    Text(scan.needsConfirmation
+                         ? "这些数字里，真正花出去的是哪个："
+                         : "这一页里有好几个数字，点一下真正要记的那个：")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     candidateRow(scan)

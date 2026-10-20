@@ -19,13 +19,14 @@ enum ReceiptOCR {
         let amount: Decimal
         let height: CGFloat
         let line: String
-        /// 该行在识别结果里的下标，用来找紧挨金额的商户名
+        /// 该行在识别结果里的下标，用来找商户名
         let index: Int
-        /// 排序用：锚点命中 + 相对字高，越大越像「真正要记的那个」
+        /// 判定用语义上下文：纯数字行会继承左边那行标题（"实付" / "¥52.00" 常被拆成两行）
+        var context: String = ""
         var score: CGFloat = 0
 
         var isAnchorLine: Bool {
-            ReceiptOCR.anchorWords.contains(where: { line.contains($0) })
+            ReceiptOCR.anchorWords.contains(where: { context.contains($0) })
         }
     }
 
@@ -44,6 +45,28 @@ enum ReceiptOCR {
         "付款方式", "支付方式", "花呗", "信用卡", "零钱", "分期", "账单日", "还款",
         "时间", "日期", "星期", "周", "月", "年",
     ]
+
+    /// 还没真花出去的钱。记成支出会把没付的算进账本。
+    static let unpaidWords = ["待支付", "未支付", "待付款", "应付", "预计"]
+
+    /// 汇总页特征：这种页面根本没有"这一笔"的金额，自动选必然错，只能交给人点。
+    static let summaryPatterns = [
+        #"账单日"#, #"还款日"#, #"应还"#, #"已用额度"#, #"可用额度"#,
+        #"本月支出"#, #"累计支出"#, #"月账单"#, #"共\s*\d+\s*笔"#, #"\d+\s*笔交易"#,
+        #"支出排行"#, #"收支分析"#, #"支出构成"#,
+    ]
+
+    /// 字段名和状态行，不是商户名。商户名极少以这些词收尾。
+    static let nameSuffixBlock = [
+        "成功", "失败", "结束", "完成", "退款", "支付", "付款", "到账", "入账",
+        "支出", "收入", "优惠", "立减", "余额", "额度", "积分", "时间", "日期",
+        "说明", "方式", "奖励", "记录", "统计", "管理", "分类", "标签", "备注",
+        "详情", "账单", "更多", "请选择", "添加", "计入", "使用", "查看", "联系",
+        "收款", "编号", "单号", "总价", "金额", "数量", "件数", "运费",
+    ]
+
+    /// 一行里同时有字段名和值时的前缀（"商户 美团"），剥掉只留值
+    static let fieldPrefixes = ["商户", "付款方", "收款方", "对方", "户名", "店铺", "商家", "商品", "品名"]
 
     /// 按阅读顺序（自上而下、自左而右）返回识别出的文本行。
     /// 顺序很重要：解析器的兜底档取第一个命中，乱序就会取到别的东西。
@@ -110,7 +133,7 @@ enum ReceiptOCR {
         "说明", "记录", "统计", "证明", "分类", "类目", "推荐", "查看", "余额", "额度", "积分",
     ]
 
-    /// 一步到位：图片 → 文本 → 逐行取候选金额 → 按「语义 + 字高」选一个 → 校正解析结果。
+    /// 一步到位：图片 → 文本 → 逐行取候选金额 → 选一个 → 校正解析结果。
     static func scan(_ image: UIImage, store: LedgerStore) async -> ReceiptScan {
         let ocrLines = await lines(from: image)
         let raw = ocrLines.map(\.text).joined(separator: " ")
@@ -122,44 +145,91 @@ enum ReceiptOCR {
 
         let candidates = rank(lines: ocrLines)
 
-        // 候选第一名比解析器的结论更可信时改判：它自己那行带账单锚点，或者字号确实压倒性最大。
-        // 两个条件缺一不可 —— 只按字高会被页脚一个稍大的数字推翻，只按锚点会漏掉金额独占一屏的成功页。
-        if let best = candidates.first, best.amount != parsed.amount {
-            let heights = ocrLines.map(\.height).sorted()
-            let median = heights.isEmpty ? 0 : heights[heights.count / 2]
-            if best.isAnchorLine || best.height >= median * 1.6 {
-                parsed.amount = best.amount
+        // 有「主角数字」（明显比第二名大一号）就用它；没有才退回锚点 + 字高的打分。
+        // 支付成功页一定有个大字金额；明细列表页全是同字号，只能靠锚点。
+        var hero: AmountCandidate?
+        if !candidates.isEmpty {
+            let byHeight = candidates.sorted { $0.height > $1.height }
+            if byHeight.count == 1 || byHeight[0].height >= byHeight[1].height * 1.5 {
+                hero = byHeight[0]
             }
         }
+        let best = hero ?? candidates.first
+        if let best, best.amount != parsed.amount, hero != nil || best.isAnchorLine {
+            parsed.amount = best.amount
+        }
 
-        // 截图页解析出的备注是整页噪声（一长串），既没法看，也会把商户自学习规则库污染掉。
-        // 账单页的商户名就印在金额上下方，直接拿那一行当备注。
-        let merchant = candidates.first.flatMap { nearestName(to: $0.index, in: ocrLines) }
+        // 汇总页 / 一堆同字号数字：这页没有唯一答案，自动定必错，清空让用户点
+        let needsConfirmation = isSummaryPage(ocrLines) || isAmbiguous(candidates)
+        if needsConfirmation, !(candidates.first?.isAnchorLine ?? false) {
+            parsed.amount = nil
+        }
+
+        // 备注优先用商户名：整页噪声当备注既没法看，也会污染商户自学习规则库
+        let merchant = best.flatMap { merchantName(in: ocrLines, near: $0.index) }
         if let merchant, parsed.note.count > 20 {
             parsed.note = merchant
         }
 
-        return ReceiptScan(rawText: raw, parse: parsed, candidates: candidates, merchant: merchant)
+        return ReceiptScan(rawText: raw, parse: parsed, candidates: candidates,
+                           merchant: merchant, needsConfirmation: needsConfirmation)
     }
 
-    /// 挨着金额那一行的上/下方找商户名：不带数字、不太长、也不是字段名的中文行。
-    /// 先上后下 —— 支付宝和微信都把商户名印在金额正上方。
-    private static func nearestName(to index: Int, in lines: [Line]) -> String? {
-        for offset in [-1, 1, -2, -3] {
-            let i = index + offset
-            guard i >= 0, i < lines.count else { continue }
-            let t = lines[i].text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if looksLikeName(t) { return t }
+    /// 前两名一样大、且都没锚点 —— 这页没有「主角数字」。
+    private static func isAmbiguous(_ cands: [AmountCandidate]) -> Bool {
+        guard cands.count >= 2 else { return false }
+        return !cands[0].isAnchorLine && cands[0].height <= cands[1].height * 1.15
+    }
+
+    private static func isSummaryPage(_ lines: [Line]) -> Bool {
+        let joined = lines.map(\.text).joined(separator: " ")
+        let ns = joined as NSString
+        let full = NSRange(location: 0, length: ns.length)
+        return summaryPatterns.contains { pattern in
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
+            return regex.firstMatch(in: joined, options: [], range: full) != nil
         }
-        return nil
+    }
+
+    /// 整页挑「最像商户名」的一行：字号最大者优先，同样大时取金额上方的那行。
+    /// 挨着金额的常常是「实付」「神券优惠」这种字段名，所以不能只找邻居。
+    private static func merchantName(in lines: [Line], near amountIndex: Int) -> String? {
+        var bestHeight = CGFloat(-1)
+        var bestAbove = -1
+        var bestName: String?
+        for (i, l) in lines.enumerated() {
+            let name = stripFieldPrefix(l.text)
+            guard looksLikeName(name) else { continue }
+            let h = (l.height * 10_000).rounded() / 10_000
+            let above = i < amountIndex ? 1 : 0
+            if bestName == nil || h > bestHeight || (h == bestHeight && above > bestAbove) {
+                bestHeight = h
+                bestAbove = above
+                bestName = name
+            }
+        }
+        return bestName
+    }
+
+    /// "商户 美团" 这种一行里带字段名的，剥掉前缀只留值；纯字段名剥完就空了
+    private static func stripFieldPrefix(_ t: String) -> String {
+        let trimmed = t.trimmingCharacters(in: .whitespacesAndNewlines)
+        for pre in fieldPrefixes where trimmed.hasPrefix(pre) {
+            return String(trimmed.dropFirst(pre.count))
+                .trimmingCharacters(in: CharacterSet(charactersIn: " :："))
+        }
+        return trimmed
     }
 
     private static func looksLikeName(_ t: String) -> Bool {
-        guard t.count >= 2, t.count <= 14 else { return false }
-        if t.contains(where: { $0.isNumber }) { return false }
-        if t.contains(">") { return false }
+        guard t.count >= 2, t.count <= 16 else { return false }
+        if t.contains(where: { $0.isNumber }) || t.contains(">") { return false }
         if pageLabels.contains(where: { t.contains($0) }) { return false }
-        return hasCJK(t)
+        if anchorWords.contains(where: { t.contains($0) }) { return false }
+        if rejectWords.contains(where: { t.contains($0) }) { return false }
+        if nameSuffixBlock.contains(where: { t.hasSuffix($0) }) { return false }
+        if hasCJK(t) { return true }
+        return t.allSatisfy { $0.isLetter || " -&'".contains($0) }   // Netflix / UNIQLO 这类纯英文店名
     }
 
     private static func hasCJK(_ s: String) -> Bool {
@@ -172,13 +242,18 @@ enum ReceiptOCR {
         for (i, line) in ocrLines.enumerated() {
             guard let value = NaturalParser.extractAmount(from: line.text).amount, value > 0 else { continue }
             if rejectWords.contains(where: { line.text.contains($0) }) { continue }
-            // 左列标题、右列数值的版式会被 Vision 拆成两行，纯数字那行自己不带语义，
-            // 屏蔽表管不到它 —— 得回头看它左边那行标题说什么。
+            if unpaidWords.contains(where: { line.text.contains($0) }) { continue }
+            // 左列标题、右列数值会被 Vision 拆成两行，纯数字那行自己不带语义：
+            // 标题是屏蔽词就一起丢掉，标题是锚点就一起继承。
+            var context = line.text
             if !hasCJK(line.text), i > 0 {
                 let label = ocrLines[i - 1].text
-                if rejectWords.contains(where: { label.contains($0) }) { continue }
+                if rejectWords.contains(where: { label.contains($0) })
+                    || unpaidWords.contains(where: { label.contains($0) }) { continue }
+                context = label + " " + line.text
             }
-            raw.append(AmountCandidate(amount: value, height: line.height, line: line.text, index: i))
+            raw.append(AmountCandidate(amount: value, height: line.height,
+                                       line: line.text, index: i, context: context))
         }
 
         // 同一个金额常在一页里出现两次（标题栏 + 明细），按金额去重，保留分高的那次
@@ -193,8 +268,7 @@ enum ReceiptOCR {
         for i in out.indices {
             let c = out[i]
             let relative = tallest > 0 ? c.height / tallest : 0
-            let anchored = anchorWords.contains(where: { c.line.contains($0) })
-            out[i].score = relative + (anchored ? 1.2 : 0)
+            out[i].score = relative + (c.isAnchorLine ? 1.2 : 0)
         }
         out.sort { $0.score > $1.score }
         return out
@@ -207,8 +281,10 @@ struct ReceiptScan {
     let parse: ParseResult
     /// 按「锚点 + 字高」打分排好、已去重，UI 上让用户一眼点中正确的那个
     let candidates: [ReceiptOCR.AmountCandidate]
-    /// 从金额上下方就近取到的商户名，取不到为 nil
+    /// 从整页挑出的商户名，取不到为 nil
     let merchant: String?
+    /// 汇总页或多笔同字号：金额没有唯一答案，必须人点一下
+    let needsConfirmation: Bool
 
     var amount: Decimal? { parse.amount }
 }
