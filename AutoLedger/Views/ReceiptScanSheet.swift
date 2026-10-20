@@ -15,6 +15,8 @@ struct ReceiptScanSheet: View {
     @State private var isReading = false
     @State private var message: String?
     @State private var blockedByDedupe = false
+    @State private var amountText = ""
+    @State private var amountOverride: Decimal?
 
     var body: some View {
         NavigationStack {
@@ -93,7 +95,7 @@ struct ReceiptScanSheet: View {
     private func resultSection(_ scan: ReceiptScan) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
-                if let amt = scan.amount {
+                if let amt = chosenAmount(scan) {
                     tag("¥" + Fmt.money(amt), color: kind == .expense ? Theme.expense : Theme.income)
                 } else {
                     tag("没识别出金额", color: .secondary)
@@ -105,6 +107,25 @@ struct ReceiptScanSheet: View {
                     color: .secondary)
             }
 
+            if scan.candidates.count > 1 {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("这一页里有好几个数字，点一下真正要记的那个：")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    candidateRow(scan)
+                }
+            }
+
+            TextField("金额不对？手动输一个", text: $amountText)
+                .keyboardType(.decimalPad)
+                .font(.subheadline)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 9)
+                .background(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(Color(.tertiarySystemFill))
+                )
+
             categoryPicker
 
             Text(ocrLinePreview(scan.rawText))
@@ -112,7 +133,7 @@ struct ReceiptScanSheet: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(3)
 
-            if let amt = scan.amount, amt > 0 {
+            if let amt = chosenAmount(scan), amt > 0 {
                 if blockedByDedupe {
                     Button("60 秒内已有同金额记录 · 仍然入账") { commit(force: true) }
                         .font(.subheadline.weight(.medium))
@@ -127,6 +148,46 @@ struct ReceiptScanSheet: View {
             }
         }
         .card()
+    }
+
+    /// 页面上识别到的候选金额，按字高从大到小 —— 支付页把金额画得最大，这个顺序基本就是答案顺序
+    private func candidateRow(_ scan: ReceiptScan) -> some View {
+        let chosen = chosenAmount(scan)
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+                ForEach(Array(scan.candidates.prefix(8).enumerated()), id: \.offset) { _, c in
+                    Button {
+                        amountText = ""
+                        amountOverride = c.amount
+                    } label: {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("¥" + Fmt.money(c.amount))
+                                .font(.caption.weight(.semibold))
+                            Text(c.line)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        .foregroundStyle(chosen == c.amount ? Color(hex: "1F2B33") : .secondary)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(chosen == c.amount ? Theme.accent : Color(.tertiarySystemFill))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    /// 手动输入 > 点选的候选 > 自动识别结果
+    private func chosenAmount(_ scan: ReceiptScan) -> Decimal? {
+        let typed = Decimal(string: amountText.trimmingCharacters(in: .whitespaces))
+        if let typed, typed > 0 { return typed.roundedTo2 }
+        if let amountOverride { return amountOverride }
+        return scan.amount
     }
 
     private var categoryPicker: some View {
@@ -164,6 +225,8 @@ struct ReceiptScanSheet: View {
         isReading = true
         message = nil
         blockedByDedupe = false
+        amountText = ""
+        amountOverride = nil
         defer { isReading = false }
 
         guard let data = try? await item.loadTransferable(type: Data.self),
@@ -179,12 +242,14 @@ struct ReceiptScanSheet: View {
         categoryID = result.parse.categoryID
 
         if result.amount == nil {
-            message = "没在截图里找到金额，可以在下面原始文本里确认识别到了什么"
+            message = result.candidates.isEmpty
+                ? "没在截图里找到数字，手动输一个金额就能入账"
+                : "没法确定哪个是实付金额 —— 点下面其中一个，或直接手动输入"
         }
     }
 
     private func commit(force: Bool) {
-        guard let scan, let amount = scan.amount, amount > 0 else { return }
+        guard let scan, let amount = chosenAmount(scan), amount > 0 else { return }
         let cid = categoryID ?? fallbackCategory()
         let note = scan.parse.note.isEmpty
             ? String(scan.rawText.prefix(40))
