@@ -8,10 +8,11 @@ import Vision
 /// 支付结果页把金额渲染成整页最大的字，字高比阅读顺序可靠。
 enum ReceiptOCR {
 
-    /// 一行识别结果 + 归一化字高（占图片高度的比例）
+    /// 一行识别结果 + 归一化字高（占图片高度的比例）+ 归一化「距顶」距离（0 = 图片上边缘）
     struct Line {
         let text: String
         let height: CGFloat
+        let top: CGFloat
     }
 
     /// 一个候选金额，来自页面上的某一行
@@ -48,6 +49,11 @@ enum ReceiptOCR {
 
     /// 还没真花出去的钱。记成支出会把没付的算进账本。
     static let unpaidWords = ["待支付", "未支付", "待付款", "应付", "预计"]
+
+    /// 手机截图顶部一定有状态栏，电量百分比常被认成一个孤零零的整数（实测 IMG_1996 的
+    /// 「934」）。它没有单位也没有标题，纯数字兜底档会把它当成金额，还会挤掉真正的
+    /// 大字数字让 hero 规则失效——顶部这一条裸整数只能来自状态栏。
+    static let statusBarBand: CGFloat = 0.06
 
     /// 汇总页特征：这种页面根本没有"这一笔"的金额，自动选必然错，只能交给人点。
     static let summaryPatterns = [
@@ -100,7 +106,7 @@ enum ReceiptOCR {
                 let dy = b.0.midY - a.0.midY
                 if abs(dy) > 0.02 { return dy > 0 }
                 return a.0.minX < b.0.minX
-            }.map { Line(text: $0.1, height: $0.0.height) }
+            }.map { Line(text: $0.1, height: $0.0.height, top: 1 - $0.0.midY) }
         }.value
     }
 
@@ -135,7 +141,8 @@ enum ReceiptOCR {
 
     /// 一步到位：图片 → 文本 → 逐行取候选金额 → 选一个 → 校正解析结果。
     static func scan(_ image: UIImage, store: LedgerStore) async -> ReceiptScan {
-        let ocrLines = await lines(from: image)
+        // 状态栏先扔掉：它既会被纯数字兜底档当成金额，又会让真正的大字数字失去 hero 优势
+        let ocrLines = (await lines(from: image)).filter { !isStatusBarNumber($0) }
         let raw = ocrLines.map(\.text).joined(separator: " ")
         var parsed = NaturalParser.parse(
             raw,
@@ -191,6 +198,14 @@ enum ReceiptOCR {
         }
     }
 
+    /// 顶部状态栏里的裸整数（电量 934 / 93%），不是金额。带 ¥ 或汉字的行不受影响。
+    private static func isStatusBarNumber(_ line: Line) -> Bool {
+        guard line.top < statusBarBand else { return false }
+        let t = line.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bare = t.hasSuffix("%") ? String(t.dropLast()) : t
+        return (1...4).contains(bare.count) && bare.allSatisfy { $0.isNumber }
+    }
+
     /// 整页挑「最像商户名」的一行：字号最大者优先，同样大时取金额上方的那行。
     /// 挨着金额的常常是「实付」「神券优惠」这种字段名，所以不能只找邻居。
     private static func merchantName(in lines: [Line], near amountIndex: Int) -> String? {
@@ -224,6 +239,7 @@ enum ReceiptOCR {
     private static func looksLikeName(_ t: String) -> Bool {
         guard t.count >= 2, t.count <= 16 else { return false }
         if t.contains(where: { $0.isNumber }) || t.contains(">") { return false }
+        if t.contains("*") { return false }   // 收款方全称「**发(个人)」是打码名，不是商户
         if pageLabels.contains(where: { t.contains($0) }) { return false }
         if anchorWords.contains(where: { t.contains($0) }) { return false }
         if rejectWords.contains(where: { t.contains($0) }) { return false }
