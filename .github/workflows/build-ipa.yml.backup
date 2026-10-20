@@ -1,0 +1,374 @@
+name: Build unsigned IPA
+
+# 鍏嶈垂绛惧悕璺嚎锛歮acOS runner 鍙礋璐ｇ紪璇戝嚭**鏈鍚?*鐨?.ipa / .app锛?# 鐢ㄦ埛鍐嶇敤 Sideloadly / AltStore / TrollStore 绛夊伐鍏枫€佺敤鍏嶈垂 Apple ID 鎴栬嚜绛捐瘉涔?# 鍦?Windows / 鑷繁鐨勬満鍣ㄤ笂绛惧悕瀹夎銆備笉闇€瑕?Mac锛屼篃涓嶉渶瑕?99 缇庡厓寮€鍙戣€呰处鍙枫€?#
+# 鐢ㄦ硶锛氭帹閫佸埌 GitHub 鈫?Actions 閲屾墜鍔?Run workflow锛堟垨 push 鍒?main 鑷姩瑙﹀彂锛?#      鈫?璺戝畬鍦?Artifacts 閲屼笅杞?AutoLedger-ipa / AutoLedger-app
+#
+# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 宸茬煡鐨勫潙锛堣俯杩囷紝鍒啀韪╋級 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# 1) Public 浠撳簱鐨?Actions macOS 鏋勫缓**涓嶈棰濆害**锛汸rivate 浠撳簱姣忔湀 2000 鍒嗛挓锛?#    浣?macOS runner 鎸?**10 鍊?* 鎵ｏ紙鍗冲疄闄呯害 200 鍒嗛挓锛夛紝澶х害鍙 5-8 娆℃瀯寤?鏈堛€?#    浠撳簱璁炬垚 Public 鍙互鐧藉珫锛屾垨鎸夐渶鎵嬪姩瑙﹀彂銆佸埆寮€ push 鍏ㄩ噺瑙﹀彂銆?# 2) 鍏嶈垂 Apple ID 绛惧悕鐨勮瘉涔﹀彧鏈?**7 澶╂湁鏁堟湡**锛屽埌鏈熼渶閲嶇锛涜€屼笖
+#    **閲嶇浼氭竻绌?App 鐨勬湰鍦版暟鎹?*锛堟矙鐩掑鍣ㄩ殢绛惧悕韬唤鍙樺寲锛夛紝鐢ㄦ埛闇€鑷澶囦唤銆?# 3) 缁濆涓嶈鍔?`-allowProvisioningUpdates`锛氬畠浼氬幓杩?Apple 璐﹀彿銆佸皾璇曡嚜鍔ㄧ鍚嶏紝
+#    鍦ㄦ棤鍑嵁鐨?CI 涓婄洿鎺ュけ璐ワ紝鑰屼笖鍙兘缁欎骇鐗╁甫涓婃畫鐣欑鍚嶏紝瀵艰嚧鐢ㄦ埛鑷鍐茬獊銆?#    鏈祦姘寸嚎鍏ㄧ▼ CODE_SIGNING_ALLOWED=NO / CODE_SIGNING_REQUIRED=NO / CODE_SIGN_IDENTITY=""銆?# 4) 鎵撳寘 ipa 蹇呴』鐢?`zip -qry`锛?y 淇濈暀绗﹀彿閾炬帴锛夛紝鏅€?zip 浼氱牬鍧?.app 鍐呴儴缁撴瀯銆?# 5) macOS 闀滃儚閲岄瑁呭涓?Xcode锛屼絾**鍙湁榛樿鐗堟湰棰勮浜?iOS 骞冲彴缁勪欢**锛?#    鍒囨崲 Xcode 鍚庡鏋滅己 iOS SDK锛屾瀯寤轰細澶辫触锛屾墍浠ヨ淇濈暀涓嬮潰銆岄€?Xcode + 澶辫触鎹㈢増鏈噸璇曘€嶇殑閫昏緫銆?
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "鏋勫缓闃舵锛氬厛 skeleton 纭宸ュ叿閾剧豢浜嗭紝鍐嶈窇 app"
+        required: true
+        default: skeleton
+        type: choice
+        options:
+          - skeleton
+          - app
+      configuration:
+        description: "鏋勫缓閰嶇疆锛堥粯璁?Release锛?
+        required: false
+        default: Release
+        type: choice
+        options:
+          - Release
+          - Debug
+  push:
+    branches: [main]
+    # 鍙湁鍔ㄥ埌宸ョ▼ / 娴佹按绾挎湰韬墠鏋勫缓锛岄伩鍏嶆敼涓?README 涔熺儳鎺変竴娆?macOS 棰濆害銆?    paths:
+      - "AutoLedger/**"
+      - "skeleton/**"
+      - "project.yml"
+      - ".github/workflows/build-ipa.yml"
+
+# 鏁呮剰涓嶈 concurrency锛氬浜?澶氭鎵嬪姩瑙﹀彂鏃讹紝涓嶈浜掔浉鍙栨秷姝ｅ湪璺戠殑鏋勫缓
+# 娉細GitHub 瀵广€岄娆℃帹閫佸氨鍖呭惈 workflow 鏂囦欢銆嶄笉浼氳Е鍙?push 浜嬩欢锛?# 鎵€浠ラ娆￠渶瑕佹墜鍔?Run workflow锛屾垨鍍忎笅闈㈣繖鏍峰啀鎺ㄤ竴娆℃湁瀹炶川鏂囦欢鏀瑰姩鐨勬彁浜ゃ€?
+permissions:
+  contents: read
+
+env:
+  BUILD_DIR: build
+  CONFIGURATION: ${{ github.event.inputs.configuration || 'Release' }}
+  # 楠ㄦ灦闃舵宸查獙璇侀€氳繃锛坮un#2 鎴愬姛浜у嚭 Skeleton.ipa锛夛紝榛樿闃舵鍒囧埌 app锛屾帹涓€娆″氨鏋勫缓姝ｅ紡鍖呫€?  # 鎯抽噸楠屽伐鍏烽摼鍙墜鍔?Run workflow 閫?skeleton銆?  STAGE: ${{ github.event.inputs.stage || 'app' }}
+
+jobs:
+  build:
+    # macos-26 鏄緝鏂扮殑鏍囩锛岄儴鍒嗗叕寮€浠撳簱/缁勭粐杩樻病寮€閫氾紝浼氫竴鐩?queued 鎷夸笉鍒?runner銆?    # macos-14 鏄渶绋崇殑鍏紑闀滃儚锛圶code 15/16 绯诲垪锛夈€傝嫢浣犵‘璁よ处鍙锋敮鎸?macos-26锛屽彲鏀瑰洖銆?    runs-on: macos-26
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 鍒嗛樁娈垫瀯寤虹殑鏍稿績锛氭墍鏈夊悗缁楠ら兘璇昏繖閲岃緭鍑虹殑鍙橀噺锛屼笉鍐嶅啓姝?AutoLedger銆?      # skeleton = 闆跺師鐢熶唬鐮侊紝缂栦笉杩囧彧鍙兘鏄幆澧?workflow 闂锛?      # app      = 瀹屾暣涓氬姟浠ｇ爜锛岀紪涓嶈繃鎵嶅彲鑳芥槸鎴戜滑鐨?Swift 闂銆?      - name: 瑙ｆ瀽鏋勫缓闃舵
+        id: cfg
+        run: |
+          set -euo pipefail
+          case "${STAGE}" in
+            skeleton)
+              proj_dir="skeleton"; target="Skeleton"; product="Skeleton"
+              bundle_id="com.autoledger.skeleton"; needs_patch="false"
+              echo "==> 闃舵 1/2锛氶鏋跺伐绋嬶紙闆跺師鐢熶唬鐮侊紝鍙獙宸ュ叿閾撅級"
+              ;;
+            app)
+              proj_dir="."; target="AutoLedger"; product="AutoLedger"
+              bundle_id="com.autoledger.app"; needs_patch="true"
+              echo "==> 闃舵 2/2锛氫富宸ョ▼锛堝畬鏁翠笟鍔′唬鐮侊級"
+              ;;
+            *)
+              echo "::error::鏈煡鏋勫缓闃舵锛?{STAGE}"
+              exit 1
+              ;;
+          esac
+          {
+            echo "project_dir=${proj_dir}"
+            echo "target=${target}"
+            echo "product=${product}"
+            echo "bundle_id=${bundle_id}"
+            echo "needs_scheme_patch=${needs_patch}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 閫夋嫨 Xcode锛堥渶瑕佸凡瀹夎 iOS 骞冲彴锛?        run: |
+          set -euo pipefail
+          ls -d /Applications/Xcode*.app || true
+          echo "--- 榛樿 Xcode ---"
+          xcodebuild -version || true
+
+          DEFAULT_MAJOR="$(xcodebuild -version 2>/dev/null | head -1 | sed -E 's/^Xcode ([0-9]+).*/\1/' || true)"
+          echo "榛樿 Xcode 涓荤増鏈? ${DEFAULT_MAJOR:-鏈煡}"
+
+          # 绛栫暐锛氫紭鍏堢敤榛樿 Xcode锛堥暅鍍忓彧涓洪粯璁ょ増鏈瑁?iOS 骞冲彴缁勪欢锛夈€?          # 鍙湁褰撻粯璁ょ増鏈綆浜?iOS 17 鎵€闇€锛圶code 15锛夋椂锛屾墠鍘绘壘鐗堟湰鍙锋渶澶х殑鍙敤 Xcode銆?          # 娉ㄦ剰锛氭寜鐗堟湰鍙锋帓搴忕敤 sort -V锛屼笉鑳芥寜瀛楁瘝搴忓彇 head銆?          if [ -n "${DEFAULT_MAJOR:-}" ] && [ "${DEFAULT_MAJOR}" -ge 15 ] 2>/dev/null; then
+            echo "榛樿 Xcode ${DEFAULT_MAJOR}.x 婊¤冻 iOS 17 鏋勫缓瑕佹眰锛岀洿鎺ヤ娇鐢?
+          else
+            XCODE="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1 || true)"
+            if [ -n "${XCODE}" ]; then
+              echo "榛樿鐗堟湰杩囦綆锛屽垏鎹㈠埌 $XCODE"
+              sudo xcode-select -s "$XCODE/Contents/Developer"
+            fi
+          fi
+
+          echo "--- 浣跨敤涓殑 Xcode ---"
+          xcode-select -p
+          xcodebuild -version
+          echo "--- 鍙敤 SDK ---"
+          xcodebuild -showsdks || true
+          echo "--- iphoneos SDK 鐗堟湰 ---"
+          xcrun --sdk iphoneos --show-sdk-version
+
+      # 浠撳簱鏍圭洰褰曞彲鑳界洿鎺ュ氨鏄伐绋嬬洰褰曪紝涔熷彲鑳芥湁涓€灞?AutoLedger/ 瀛愮洰褰曘€?      # 缁熶竴鎺㈡祴 project.yml 鎵€鍦ㄧ洰褰曪紝鍚庣画姝ラ閮戒互瀹冧负宸ヤ綔鐩綍锛屼袱绉嶅竷灞€閮借兘璺戙€?      # 浠撳簱甯冨眬锛歱roject.yml 鍦ㄤ粨搴撴牴锛屼富宸ョ▼婧愮爜鍦?AutoLedger/锛岄鏋跺湪 skeleton/銆?      # steps.cfg.outputs.project_dir 鐩存帴缁欏嚭鐩稿浠撳簱鏍圭殑闃舵鐩綍锛?." 鎴?"skeleton"锛夛紝
+      # 杩欓噷涓嶅啀鍋氫簩娆℃嫾鎺ワ紝閬垮厤鍑虹幇 "./." 杩欑被鐣稿舰璺緞銆?      - name: 瀹氫綅宸ョ▼鐩綍
+        id: locate
+        run: |
+          set -euo pipefail
+          STAGE_SUBDIR="${{ steps.cfg.outputs.project_dir }}"
+
+          if [ -f "${STAGE_SUBDIR}/project.yml" ]; then
+            stage_dir="${STAGE_SUBDIR}"
+          elif [ -f "project.yml" ] && [ "${STAGE_SUBDIR}" = "." ]; then
+            stage_dir="."
+          else
+            echo "::error::鎵句笉鍒?${STAGE_SUBDIR}/project.yml锛岃纭浠撳簱缁撴瀯"
+            echo "--- 褰撳墠鐩綍 ---"
+            ls -la
+            exit 1
+          fi
+
+          echo "stage_dir=${stage_dir}" >> "$GITHUB_OUTPUT"
+          echo "闃舵鐩綍: ${stage_dir}"
+          echo "--- 璇ョ洰褰曞唴瀹?---"
+          ls -la "${stage_dir}"
+
+      - name: 瀹夎 XcodeGen
+        run: |
+          set -euo pipefail
+          if command -v xcodegen >/dev/null 2>&1; then
+            echo "XcodeGen 宸查瑁咃紝璺宠繃 brew install"
+          else
+            brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: 鐢熸垚 Xcode 宸ョ▼
+        working-directory: ${{ steps.locate.outputs.stage_dir }}
+        run: |
+          set -euo pipefail
+          xcodegen generate --spec project.yml
+          ls -la
+
+      # 涓や釜 project.yml 閲岄兘鏄惧紡澹版槑浜?scheme:锛孹codeGen 浼氳嚜鍔ㄧ敓鎴愬叡浜?.xcscheme锛?      # 鎵€浠ヨ繖閲屼笉鍐嶉渶瑕?ensure_scheme.py 鍏滃簳锛屽彧鍋氫竴娆″瓨鍦ㄦ€ф牎楠屻€?      # 锛堜箣鍓嶉偅姝ョ敤 `python3 tools/ensure_scheme.py .` 鍦ㄦ牴鐩綍璺戯紝
+      #   鑴氭湰浼氬洜涓烘壘涓嶅埌 target 鑰?exit 1锛岀洿鎺ュ崱姝绘暣涓祦姘寸嚎銆傦級
+      # 杩欎竴姝ュ彧鍋氳瘖鏂紝涓嶉樆濉炴瀯寤猴細鍗充娇 xcodebuild -list 鎶ラ敊涔熺户缁線涓嬭蛋锛?      # 璁╃湡姝ｇ殑 archive 姝ラ缁欏嚭鏉冨▉缁撴灉锛堝苟鎶婂畠鑷繁鐨勬棩蹇楀啓杩?summary锛夈€?      - name: 鏍￠獙鍏变韩 scheme 宸茬敓鎴?        continue-on-error: true
+        working-directory: ${{ steps.locate.outputs.stage_dir }}
+        run: |
+          set -euo pipefail
+          TARGET="${{ steps.cfg.outputs.target }}"
+          LOG="$RUNNER_TEMP/scheme-check.log"
+          exec > >(tee "$LOG") 2>&1
+
+          echo "=== pwd ==="
+          pwd
+          echo "=== ls ==="
+          ls -la
+          echo "=== 鎵?.xcodeproj ==="
+          ls -d *.xcodeproj 2>/dev/null || echo "锛堟病鏈?.xcodeproj锛?
+          echo "=== xcodebuild -list ==="
+
+          set +e
+          xcodebuild -list -project "${TARGET}.xcodeproj"
+          rc=$?
+          set -e
+
+          {
+            echo "## scheme 鏍￠獙鏃ュ織"
+            echo ""
+            echo "- pwd: \`$(pwd)\`"
+            echo "- target: \`${TARGET}\`"
+            echo "- exit code: \`${rc}\`"
+            echo ""
+            echo '```'
+            cat "$LOG" 2>/dev/null | head -n 80
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::xcodebuild -list 澶辫触锛坋xit $rc锛?
+            exit "$rc"
+          fi
+
+          SCHEME_PATH="${TARGET}.xcodeproj/xcshareddata/xcschemes/${TARGET}.xcscheme"
+          if [ -f "$SCHEME_PATH" ]; then
+            echo "OK: 鍏变韩 scheme 宸茬敓鎴?-> $SCHEME_PATH"
+          else
+            echo "::warning::娌℃壘鍒板叡浜?scheme 鏂囦欢锛屼絾 xcodebuild -list 宸茶兘鍒楀嚭 scheme锛岀户缁瀯寤?
+            find "${TARGET}.xcodeproj" -name "*.xcscheme" || true
+          fi
+
+      - name: 缂栬瘧鏈鍚?.app锛坅rchive锛?        working-directory: ${{ steps.locate.outputs.stage_dir }}
+        run: |
+          set -euo pipefail
+          LOG="$PWD/build.log"
+          PRODUCT="${{ steps.cfg.outputs.product }}"
+          TARGET="${{ steps.cfg.outputs.target }}"
+          XCODE_PROJECT="${TARGET}.xcodeproj"
+
+          build_once() {
+            set -o pipefail
+            rm -rf "${BUILD_DIR}/${PRODUCT}.xcarchive" "${BUILD_DIR}/DerivedData"
+            xcodebuild archive \
+              -project "${XCODE_PROJECT}" \
+              -scheme "${TARGET}" \
+              -configuration "${CONFIGURATION}" \
+              -destination 'generic/platform=iOS' \
+              -archivePath "${BUILD_DIR}/${PRODUCT}.xcarchive" \
+              -derivedDataPath "${BUILD_DIR}/DerivedData" \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGN_IDENTITY="" \
+              CODE_SIGN_ENTITLEMENTS="" \
+              ONLY_ACTIVE_ARCH=NO \
+              2>&1 | tee "$LOG"
+          }
+
+          summarize() {
+            echo "================ 閿欒鎽樿 ================"
+            grep -nE "error:|fatal error:|鉂寍Command .* failed|failed with a nonzero exit code" \
+              "$LOG" | tail -n 80 || true
+            echo "=========================================="
+
+            # 鎶婇敊璇啓杩?Job Summary锛岃繖鏍峰嵆浣挎病鏈夌櫥褰?GitHub 涔熻兘鐩存帴鐪嬪埌澶辫触鍘熷洜锛?            # 涓嶅繀涓嬭浇闇€瑕?admin 鏉冮檺鐨勬棩蹇楀寘銆?            {
+              echo "## 鉂?缂栬瘧澶辫触锛歕`${TARGET}\`"
+              echo ""
+              echo '```'
+              grep -E "error:|fatal error:" "$LOG" | head -n 40 || echo "锛堟病鎶撳埌 error: 琛岋紝璇风湅涓嬫柟灏鹃儴鏃ュ織锛?
+              echo '```'
+              echo ""
+              echo "<details><summary>鏋勫缓鏃ュ織灏鹃儴 60 琛?/summary>"
+              echo ""
+              echo '```'
+              tail -n 60 "$LOG" || true
+              echo '```'
+              echo "</details>"
+            } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          }
+
+          # 棣栭€夊綋鍓?Xcode锛涘け璐ュ垯鎸夌増鏈彿浠庢柊鍒版棫閫愪釜灏濊瘯锛堥暅鍍忓彧涓洪儴鍒?Xcode 棰勮 iOS 骞冲彴锛?          if build_once; then
+            exit 0
+          fi
+          summarize
+          echo "=== 褰撳墠 Xcode 鏋勫缓澶辫触锛屽皾璇曞垏鎹㈠叾瀹?Xcode 閲嶈瘯 ==="
+          xcodebuild -showdestinations -project "${XCODE_PROJECT}" -scheme "${TARGET}" || true
+
+          for XCODE in $(ls -d /Applications/Xcode*.app 2>/dev/null | sort -Vr); do
+            echo "--- 灏濊瘯 $XCODE ---"
+            sudo xcode-select -s "$XCODE/Contents/Developer"
+            xcodebuild -version
+            if build_once; then
+              echo "=== 浣跨敤 $XCODE 鏋勫缓鎴愬姛 ==="
+              exit 0
+            fi
+            summarize
+          done
+
+          echo "=== 鎵€鏈夊€欓€?Xcode 鍧囨瀯寤哄け璐?==="
+          exit 1
+
+      - name: 鎵撳寘鎴愭湭绛惧悕 IPA
+        working-directory: ${{ steps.locate.outputs.stage_dir }}
+        run: |
+          set -euo pipefail
+          PRODUCT="${{ steps.cfg.outputs.product }}"
+          BUNDLE_ID="${{ steps.cfg.outputs.bundle_id }}"
+          APP="${BUILD_DIR}/${PRODUCT}.xcarchive/Products/Applications/${PRODUCT}.app"
+          if [ ! -d "$APP" ]; then
+            echo "娌℃湁鎵惧埌 .app"
+            find "${BUILD_DIR}/${PRODUCT}.xcarchive" -maxdepth 4 -type d -name '*.app' || true
+            exit 1
+          fi
+          echo "app: $APP"
+
+          # 浜屾纭浜х墿鏈绛惧悕锛堟湭绛惧悕 = 娌℃湁 _CodeSignature锛宑odesign 涔熸煡涓嶅埌锛?          if [ -d "$APP/_CodeSignature" ]; then
+            echo "::warning::浜х墿涓瓨鍦?_CodeSignature锛岀Щ闄や互淇濊瘉鏈鍚?
+            rm -rf "$APP/_CodeSignature"
+          fi
+          if codesign -dv "$APP" >/dev/null 2>&1; then
+            echo "::warning::妫€娴嬪埌娈嬬暀绛惧悕锛屾墽琛岀Щ闄?
+            codesign --remove-signature "$APP" || true
+          fi
+          if codesign -dv "$APP" >/dev/null 2>&1; then
+            echo "::error::浜х墿浠嶇劧甯︾鍚嶏紝鐢ㄦ埛鑷浼氬啿绐?
+            exit 1
+          fi
+          echo "OK: 浜х墿涓烘湭绛惧悕 app"
+
+          # 缁撴瀯鑷锛氫簩杩涘埗 + bundle id
+          test -f "$APP/${PRODUCT}" || { echo "::error::缂哄皯鍙墽琛屾枃浠?${PRODUCT}"; exit 1; }
+          file "$APP/${PRODUCT}"
+          GOT_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
+          echo "Bundle ID: $GOT_ID"
+          [ "$GOT_ID" = "${BUNDLE_ID}" ] || { echo "::error::bundle id 涓嶆槸棰勬湡鐨?${BUNDLE_ID}"; exit 1; }
+
+          rm -rf Payload "${PRODUCT}.ipa"
+          mkdir -p Payload
+          # ditto 姣?cp -R 鏇村畬鏁村湴淇濈暀绗﹀彿閾炬帴 / 鏉冮檺 / 鎵╁睍灞炴€?          ditto "$APP" "Payload/${PRODUCT}.app"
+
+          # 鍏抽敭锛?y 淇濈暀绗﹀彿閾炬帴銆?r 閫掑綊锛屼笉鑳界敤鏅€?zip
+          zip -qry "${PRODUCT}.ipa" Payload
+          ls -lh "${PRODUCT}.ipa"
+
+          # 娉ㄦ剰锛氬叏绋嬫湁 pipefail锛屼笉鑳芥妸 unzip 杈撳嚭绠￠亾缁?head / grep -q
+          # 锛堝畠浠細鎻愬墠閫€鍑猴紝瀵艰嚧 unzip 鏀跺埌 SIGPIPE锛屾暣涓楠よ鍒ゅけ璐ワ級銆?          # 鎵€浠ュ厛鎶婃竻鍗曡惤鍒版枃浠讹紝鍐嶅鏂囦欢鍋氭鏌ャ€?          unzip -l "${PRODUCT}.ipa" > "${BUILD_DIR}/ipa-contents.txt"
+          sed -n '1,20p' "${BUILD_DIR}/ipa-contents.txt"
+          if ! grep -q "Payload/${PRODUCT}.app/" "${BUILD_DIR}/ipa-contents.txt"; then
+            echo "::error::ipa 缁撴瀯涓嶆纭紝缂哄皯 Payload/${PRODUCT}.app/"
+            exit 1
+          fi
+
+          # 鍙﹀瓨涓€浠?.app锛屼緵鍙帴鍙?.app 鐨勭鍚嶅伐鍏蜂娇鐢?          rm -rf artifact-app
+          mkdir -p artifact-app
+          ditto "$APP" "artifact-app/${PRODUCT}.app"
+          SYMLINKS="$(find "artifact-app/${PRODUCT}.app" -type l -print -quit)"
+          if [ -n "${SYMLINKS}" ]; then
+            echo "::warning::.app 涓瓨鍦ㄧ鍙烽摼鎺ワ紝zip 涓婁紶浼氫涪澶遍摼鎺ワ紝寤鸿鏀圭敤 tar.gz 鍒嗗彂"
+          fi
+
+      - name: 涓婁紶鏈鍚?IPA
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.cfg.outputs.product }}-ipa
+          path: ${{ steps.locate.outputs.stage_dir }}/${{ steps.cfg.outputs.product }}.ipa
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: 涓婁紶鏈鍚?APP
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.cfg.outputs.product }}-app
+          path: ${{ steps.locate.outputs.stage_dir }}/artifact-app/${{ steps.cfg.outputs.product }}.app
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: 澶辫触鏃朵笂浼犳瀯寤烘棩蹇?        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.cfg.outputs.product }}-build-log
+          path: |
+            ${{ steps.locate.outputs.stage_dir }}/build.log
+            ${{ steps.locate.outputs.stage_dir }}/build/DerivedData/Logs
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: 鏋勫缓鎽樿
+        if: success()
+        run: |
+          {
+            echo "## 鏋勫缓瀹屾垚锛堥樁娈碉細\`${STAGE}\`锛?
+            echo ""
+            echo "- 宸ョ▼: \`${{ steps.cfg.outputs.target }}\`"
+            echo "- 閰嶇疆: \`${CONFIGURATION}\`"
+            echo "- 浜х墿 1: \`${{ steps.cfg.outputs.product }}-ipa\` 鈫?${{ steps.cfg.outputs.product }}.ipa锛堟湭绛惧悕锛?
+            echo "- 浜х墿 2: \`${{ steps.cfg.outputs.product }}-app\` 鈫?${{ steps.cfg.outputs.product }}.app锛堟湭绛惧悕锛?
+            echo "- Bundle ID: \`${{ steps.cfg.outputs.bundle_id }}\`"
+            echo ""
+            if [ "${STAGE}" = "skeleton" ]; then
+              echo "> 杩欐槸**楠ㄦ灦**鏋勫缓锛屽彧璇佹槑宸ュ叿閾炬甯搞€?
+              echo "> 涓嬩竴姝ワ細鎵嬪姩 Run workflow锛宻tage 閫?\`app\`锛屾瀯寤虹湡姝ｇ殑涓氬姟浠ｇ爜銆?
+            else
+              echo "> 浜х墿瀹屽叏鏈鍚嶃€傝鐢?Sideloadly / AltStore / 鑷璇佷功澶勭悊鍚庡啀瀹夎銆?
+              echo "> 鍏嶈垂 Apple ID 绛惧悕浠?7 澶╂湁鏁堬紝涓旈噸绛句細娓呯┖ App 鏈湴鏁版嵁锛岃鎻愬墠澶囦唤銆?
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
