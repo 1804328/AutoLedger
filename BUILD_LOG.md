@@ -459,3 +459,34 @@ Windows 上没有 swiftc，本轮代码**一行都没编译过**。Python 移植
 3. 60 秒窗口是否过宽：手动记 25 后马上用截图记 25 会被跳过——界面上有「仍然入账」出口，快捷指令和 URL 只有回话、没有出口。
 
 第 11 轮如果挂，C 类错误优先怀疑 `ReceiptScanSheet.swift` 的类型推断与 `ReceiptOCR.swift` 的 Vision 调用。`project.yml` 里 `sources: - path: AutoLedger` 是递归的，**新增 Swift 文件不需要改工程配置、不需要重新生成 `.xcodeproj`**。
+
+---
+
+### 第 11 轮 · 2026-10-20 · ✅ run#13 绿灯：第 9+10 轮代码一次通过编译
+
+远端 `main` 从 `4b8e4b8` 推到 `9bcc566`（5 个提交：第 8/9/10 轮的台账 + 解析器改造 + OCR/去重）。
+
+**run#13**（`workflow_dispatch`，stage=app，configuration=Release，`39388335133`）**全绿**：`生成 Xcode 工程 → 编译未签名 .app（archive） → 打包成未签名 IPA → 上传` 12 个实质步骤全部 success，产物 `AutoLedger-ipa` 581 KB / `AutoLedger-app` 599 KB，墙钟 1m47s。
+
+也就是说第 10 轮那句「一行都没编译过」的顾虑**没有变成错误**：`VNRecognizeTextRequest` 的用法、`PhotosPicker` + `loadTransferable`、`TxSource` 加 case、`addAutomated` 返回 `Transaction?`、SwiftUI 那边的 `if let scan` 简写和 `.primaryButtonStyle()` 修饰顺序，在 macos-26 / Xcode 26 上全部成立。**结论：Windows 侧「定界符平衡 + 逐个 API 存在性自查 + Python 移植验语义」这套替代验证，在这两轮里足够用了**，没有出现需要靠编译器才能发现的错误。
+
+#### 这轮踩到的一条新坑：`[skip ci]` 看的是 tip 提交
+
+推送后 **Actions 一个 run 都没出现**。原因：这批里最后一个提交 `9bcc566` 是文档提交、带 `[skip ci]`，GitHub 对 push 事件按 **tip 提交的消息**判定跳过——**前面那个不带标记的 `788c1ae feat(ocr)` 完全不起作用**。
+
+后果很隐蔽：代码确实推上去了（远端 HEAD 就是新提交），但构建静默不发生，从手机侧看就是「改了没生效」。
+
+**做法改成两条**：
+1. 攒批推送时，把**不带 `[skip ci]` 的提交排在最后**（`git commit` 顺序即可，不必 rebase）。
+2. 已经推错了就手动派发。**注意 `workflow_dispatch` 的 `stage` 下拉默认是 `skeleton`**，而 push 事件的默认值走 `env.STAGE` 才是 `app`——手点时不改成 `app` 就只构建骨架，白等两分钟。本轮就是把 stage 手动改成 app 才构建正式包。
+3. `on.push.paths` 只认 `AutoLedger/**`、`skeleton/**`、`project.yml`、workflow 文件本身；**根目录的 `BUILD_LOG.md` / `README.md` 改动不会触发构建**，空提交也不会（没有文件变更，paths 匹配不上）。
+
+#### 认证侧的一次性配置（以后不用再管）
+
+`origin` 是 `ssh://git@ssh.github.com:443/...`。本机 `~/.ssh/id_rsa.pub` 之前没注册到账号，`Permission denied (publickey)`；把公钥加进 GitHub Settings → SSH and GPG keys 后 `ssh -T` 回 `Hi 1804328!`，推送即通。**HTTPS 那条路仍是坏的**：git 全局 `http.proxy` 指向一个没在跑的 `127.0.0.1:62199`，且 GCM 里存的是已废弃的用户名+密码。别再退回 HTTPS 试。
+
+#### 现在该做的（按顺序）
+
+1. 下 `AutoLedger-ipa` → 用免费 Apple ID 重签装机。**重签会清空沙盒数据，所以装新包之前先跑一次备份**。
+2. 装完先验第 10 轮那条运行时风险：`PhotosPicker` 取到的截图是否因为 `imageOrientation` 导致 OCR 空结果——这是唯一一类编译过但真机不工作的错。
+3. 第 8/10 轮列的数据持久化、备份恢复闭环仍未验，且必须在第一次重签之前验。
