@@ -128,10 +128,15 @@ struct ReceiptScanSheet: View {
 
             categoryPicker
 
-            Text(ocrLinePreview(scan.rawText))
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("备注：\(noteText(scan))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(ocrLinePreview(scan.rawText))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(3)
+            }
 
             if let amt = chosenAmount(scan), amt > 0 {
                 if blockedByDedupe {
@@ -251,9 +256,7 @@ struct ReceiptScanSheet: View {
     private func commit(force: Bool) {
         guard let scan, let amount = chosenAmount(scan), amount > 0 else { return }
         let cid = categoryID ?? fallbackCategory()
-        let note = scan.parse.note.isEmpty
-            ? String(scan.rawText.prefix(40))
-            : scan.parse.note
+        let note = noteText(scan)
 
         let tx = Transaction(
             kind: kind,
@@ -278,6 +281,13 @@ struct ReceiptScanSheet: View {
 
     private func fallbackCategory() -> String {
         kind == .expense ? "other_expense" : "other_income"
+    }
+
+    /// 备注优先用解析器给的结果；整页噪声时退到商户名，再退到原文前 40 字
+    private func noteText(_ scan: ReceiptScan) -> String {
+        if !scan.parse.note.isEmpty { return scan.parse.note }
+        if let m = scan.merchant { return m }
+        return String(scan.rawText.prefix(40))
     }
 
     /// 去掉屏蔽表已经处理过的空白噪声，只给用户看关键几行

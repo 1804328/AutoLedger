@@ -290,6 +290,21 @@ enum DateExtractor {
     static func extract(from text: String, now: Date = Date()) -> Date {
         let cal = Calendar.current
 
+        // 0) 绝对日期 2026-10-18 22:04:59 / 2026年10月18日。
+        //    必须排在最前：账单详情页的「支付时间」就是这笔账真正的日期，
+        //    而这类页面里同时还有状态栏时间、账单日、还款日，晚一步就被它们抢走。
+        //    未来日期一律不信（花呗「账单日 每月01日」这种就是未来的）。
+        if let m = firstMatch(#"(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})[日号]?(?:\s*(\d{1,2}):(\d{2}))?"#, in: text),
+           let y = Int(m.groups[0]), let mo = Int(m.groups[1]), let da = Int(m.groups[2]) {
+            var comps = DateComponents(year: y, month: mo, day: da)
+            if let h = Int(m.groups[3]), let mi = Int(m.groups[4]) {
+                comps.hour = h; comps.minute = mi
+            }
+            if let d = cal.date(from: comps), d <= cal.date(byAdding: .day, value: 1, to: now) ?? now {
+                return d
+            }
+        }
+
         // 1) 相对日
         for item in relativeMap where text.contains(item.word) {
             return cal.date(byAdding: .day, value: item.dayOffset, to: now) ?? now
