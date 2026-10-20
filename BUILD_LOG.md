@@ -418,4 +418,44 @@ AppShortcut(intent: MonthSummaryIntent(),   ..., shortTitle: "本月收支", ...
 
 **下一轮构建时**：如果挂，C 类错误大概率集中在 `NaturalParser.swift` 的新增正则/类型上，按 `file:line` 定位即可，别动 workflow（铁律 2）。去重（同一时间窗同金额同商户）留给下一轮，因为那要改 `LedgerStore` 的写入路径，属于持久化，不能和本轮解析逻辑混在一起排查。
 
+---
 
+### 第 10 轮 · 2026-10-20 · 截图 OCR 入账 + 自动入账去重，**代码完成，未构建**
+
+用户把这轮整条交出来（「全部交给你来弄好」）。方向因此改变：不再教用户在快捷指令里搭六个动作块，而是**把能力做进 App**——装完就有入口，零装配。
+
+#### 新增 / 改动（2 个新文件 + 5 处改动）
+
+- **`Parser/ReceiptOCR.swift`（新建）**：Vision `VNRecognizeTextRequest`，`recognitionLevel = .accurate`、`recognitionLanguages = ["zh-Hans", "en-US"]`。按阅读顺序输出文本行再拼成一行喂给 `NaturalParser`——**顺序是功能不是美化**：兜底档取第一个命中，乱序就会取到余额。Vision 归一化坐标原点在左下角，所以「靠上」= `midY` 大，同一行用 0.02 容差再按 x 排。本机识别，不联网、不上传。
+- **`Views/ReceiptScanSheet.swift`（新建）**：`PhotosPicker` 选一张截图。**选它而不是相册读取，是为了整条路径不需要相册权限声明**。预览 → 识别中 → 金额/分类/日期标签 → 「纠正分类」→ 入账；被去重拦下时给一条「仍然入账」的出口。
+- **`Views/HomeView.swift`**：右上角加 `camera.viewfinder` 工具栏入口 + sheet。
+- **`Models/Models.swift`**：`TxSource` 增 `case screenshot`（「截图识别」，图标 `camera.viewfinder`）。全仓只有两处 `TxSource` 的穷尽 switch（已 grep 确认），加 case 安全；`Codable` 走 rawValue，旧数据不受影响。
+- **`Store/LedgerStore.swift`**：`addAutomated(_:)` —— 同账本 + 同收支类型 + 同金额 + **60 秒内**已有则跳过并返回 nil。只对机器来源生效，`.manual` / `.imported` 直接豁免（连买两杯奶茶是真事，不能吞）。周期账生成走 `transactions.append` + 自己的 fingerprint 判重，不经过这条路。
+- **`Intents/AutoLedgerIntents.swift`**：`AddTransactionIntent` 与 `URLRouter` 两个分支都换成 `addAutomated`，被去重时明确回话，不静默吞掉一笔。
+- **`Views/ShortcutGuideView.swift`**：新增「截图入账」卡（方式三），原「做成全自动（推荐）」降级为方式四。
+
+#### 顺手修掉的一条虚假宣称
+
+原指南里这行是不存在的触发条件：
+
+```swift
+autoRow(icon: "creditcard.fill", title: "收到付款通知时", detail: "自动化 → 收到付款 → 添加「自动记账」动作")
+```
+
+而且用户的反驳本身成立：**支付成功通常不产生系统通知**，通知在支付环节根本指望不上。已替换成 iOS 27 实际存在的时机（截屏、轻点背面、收到通知时——并注明只适合确实弹通知的银行扣款提醒、打开 App、定时、主屏幕）。
+
+同一段那句「iOS 不允许 App 读取其他 App 的支付数据」重写成能做到的上限：**系统帮你抓一张截图或一段屏幕文字，识别和入账由 App 完成；省掉的是「打开 App 填表单」，不是「支付」这一步**。`intro` 里「快捷指令里已经自动出现**自动记账**的两个动作」也按第 8 轮实测改成动作名「记一笔」「本月收支」，并提示按动作名搜。
+
+#### 一次避免掉的构建浪费
+
+原计划给 `AddTransactionIntent` 加一个图片类型的 `@Parameter`，让快捷指令直接把截图传进来。查到 `Intents.ImageContent` 文档页 404——**SiriKit 在 iOS 27 已废弃**，`ImageContent` 属于那一族。拿它当参数有较大概率编译失败，而一次失败就是几十分钟 macOS 额度。改成：快捷指令侧用系统动作「提取图像中的文本」得到纯文本 → 喂 `text` 参数；需要图片识别的场景走 App 内的 `ReceiptScanSheet`。效果一样，风险归零。**这条判断没有编译器背书，属于「不确定就不赌」。**
+
+#### 没验过的
+
+Windows 上没有 swiftc，本轮代码**一行都没编译过**。Python 移植能验解析语义，验不了 Vision API 用法和 SwiftUI 修饰符顺序。真机重点：
+
+1. `PhotosPicker` 取到的截图 `UIImage` 是否带方向信息，导致 `cgImage` 出来是躺着的、OCR 空结果。
+2. `.accurate` + 整屏截图的耗时，UI 上会不会看起来像卡死。
+3. 60 秒窗口是否过宽：手动记 25 后马上用截图记 25 会被跳过——界面上有「仍然入账」出口，快捷指令和 URL 只有回话、没有出口。
+
+第 11 轮如果挂，C 类错误优先怀疑 `ReceiptScanSheet.swift` 的类型推断与 `ReceiptOCR.swift` 的 Vision 调用。`project.yml` 里 `sources: - path: AutoLedger` 是递归的，**新增 Swift 文件不需要改工程配置、不需要重新生成 `.xcodeproj`**。
