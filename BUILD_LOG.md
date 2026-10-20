@@ -361,4 +361,37 @@ static var appShortcuts: [AppShortcut] {
 
 **下一步不在本日志范围内**：产物完全未签名，需要 Sideloadly / AltStore / 自签证书处理后才能装到 iPhone。免费 Apple ID 签名只有 7 天有效、且重签会清空本地账本数据（见 workflow 顶部坑 2），装机前先确认备份路径可用。
 
+---
+
+### 第 8 轮 · 2026-10-20 · ✅ 真机验收：两个 App Shortcut 已注册进系统
+
+run#12 的 IPA 签名装到 iPhone（iOS 27）后，「快捷指令」App 里能看到 **「记一笔」** 和 **「本月收支」**。
+
+这两个字符串和 `AutoLedgerIntents.swift` 里 `appShortcuts` 的 `shortTitle` **逐字对应**：
+
+```swift
+AppShortcut(intent: AddTransactionIntent(), ..., shortTitle: "记一笔",   ...)
+AppShortcut(intent: MonthSummaryIntent(),   ..., shortTitle: "本月收支", ...)
+```
+
+所以第 7 轮那次修改不只是「编译过了」，而是**编译 → 打包 → 签名 → 安装 → iOS 系统注册**整条链路都验通了。App Intents 这条最容易「静默失效」的能力（构建成功但系统里没入口）已确认有效。
+
+#### 之前那句「快捷指令里没有自动记账」的定论
+
+当时的判断方向是对的：不是代码问题。构建侧证据 —— 从产物 IPA 里解出 `Metadata.appintents/` 下 `extract.actionsdata`、`nlu/nlu.lzfse`、`version.json` 三个文件齐全，`title` 字段读出来是「快速记一笔」。**元数据完整，说明包内没问题。**
+
+真实原因是入口位置和索引时机两件事叠在一起：
+
+- **入口位置**：系统注册的是**动作名**（`shortTitle`：记一笔 / 本月收支），不是 App 名「自动记账」。在快捷指令首页顶部按 App 名找是找不到的，要在动作搜索里搜「记一笔」。
+- **索引时机**：`AppIntents` 元数据由系统后台索引入库，刚装完那几分钟常常搜不到。
+
+**教训**：判断「App Intents 有没有生效」，看 IPA 里的 `Metadata.appintents/` 是否齐、`extract.actionsdata` 里 `title` 有没有值，比在手机上反复翻界面快得多。包内齐备 + 设备端没入口，才轮到怀疑索引延迟。
+
+#### 仍然没验的（按风险排序）
+
+1. **数据持久化**：记一笔 → 杀掉 App → 重开，账还在不在。免费证书 7 天到期后重签会清空容器，这条必须先在手机上确认过，否则一周后一起丢。
+2. **备份 / 恢复闭环**：设置 → 数据 → 备份全部数据，再用同一个 JSON 恢复。重签流程依赖它。
+3. **自然语言解析的实际命中率**：`NaturalParser` 中文数字 / 商户关键词只有代码，没有测试，也没在真机上跑过样例。
+4. **零测试文件**：三个纯逻辑模块（`NaturalParser`、`ChineseNumber`、`MerchantRuleEngine`）适合加单测，但它们只能在 Xcode test target 里跑，Windows 侧构建链路带不了 —— 属于「有 Mac 之后再做」。
+
 
