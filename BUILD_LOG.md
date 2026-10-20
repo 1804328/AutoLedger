@@ -302,3 +302,47 @@ Checkout                    ✅
 2. 若还想让未登录也能看，就把 `summarize()` 里的错误行同时用 `::error::` workflow 命令打出来（annotations API 匿名可读）。代价是每次失败要重新烧一轮构建。
 
 **注意**：run#11 有一条 notice —— `Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.`。排队久是全局容量问题，不是配置问题，参考第 3 轮处置。
+
+---
+
+### 第 7 轮 · 2026-10-20 · ✅ 拿到第一条真实 error: —— 是 C 类
+
+**怎么拿到的**：登录后用浏览器读 run#11 的 Job Summary（未登录时该面板不渲染，日志 API 403，见第 6 轮）。
+
+**报错只有一条**，全项目首次出现真实编译器错误：
+
+```
+AutoLedger/Intents/AutoLedgerIntents.swift:204:9: error:
+cannot convert value of type '[AppShortcut]' to expected argument type 'AppShortcut'
+```
+
+**分类**：C（自己的代码）—— 带 `file:line`，且骨架三次绿灯已排除 A 类。**这正是 run#5 / #9 / #11 卡了三轮的真正原因。**
+
+**根因**：`AppShortcutsProvider.appShortcuts` 被 `@AppShortcutsBuilder` 标注，是**结果构建器**，不是普通数组属性。写成
+
+```swift
+static var appShortcuts: [AppShortcut] {
+    [ AppShortcut(...), AppShortcut(...) ]   // ✗ 整个数组字面量被当成一个表达式
+}
+```
+
+时，构建器要把 body 里的每个表达式喂给 `buildExpression(_ : AppShortcut)`，而这里只有**一个**表达式且类型是 `[AppShortcut]` → 报「数组转不成单个元素」。列号 `:204:9` 正好指向那个 `[`。
+
+**改法**：去掉外层 `[ ]` 和元素间逗号，让每个 `AppShortcut` 各自成为一条独立语句（结果构建器写法）：
+
+```swift
+static var appShortcuts: [AppShortcut] {
+    AppShortcut(intent: AddTransactionIntent(), phrases: [...], ...)
+    AppShortcut(intent: MonthSummaryIntent(),   phrases: [...], ...)
+}
+```
+
+注意 `phrases:` **里面**仍是普通初始化参数，数组字面量是对的，别一起改掉。
+
+**同类排查**：全仓只有这一个 `AppShortcutsProvider`；`AutoLedgerIntents.swift:16` 的 `caseDisplayRepresentations` 也是 `{ [`，但它是普通字典计算属性、不挂构建器，保持原样。
+
+**教训**：
+- **在 Apple 的 `@...Builder` 属性里，默认不要写数组字面量。** 声明类型是 `[X]` 极具误导性 —— 它只描述构建器的最终产物，不表示 body 里可以放一个数组。
+- **报错的列号是免费的诊断信息。** `:204:9` 直接指到 `[`，比读整段代码快得多；之前四轮都在猜，一次都没看过这个数。
+- 本轮只改 1 处（铁律 1），改完即构建（铁律 3）。若还有后续错误，那将是本轮之后才暴露的新错误，不要提前改。
+

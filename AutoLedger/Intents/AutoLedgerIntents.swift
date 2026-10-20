@@ -201,26 +201,24 @@ struct MonthSummaryIntent: AppIntent {
 @available(iOS 17.0, *)
 struct AutoLedgerShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
-        [
-            AppShortcut(
-                intent: AddTransactionIntent(),
-                phrases: [
-                    "用 \(.applicationName) 记一笔",
-                    "\(.applicationName) 记账",
-                ],
-                shortTitle: "记一笔",
-                systemImageName: "plus.circle.fill"
-            ),
-            AppShortcut(
-                intent: MonthSummaryIntent(),
-                phrases: [
-                    "用 \(.applicationName) 查本月收支",
-                    "\(.applicationName) 本月花了多少",
-                ],
-                shortTitle: "本月收支",
-                systemImageName: "chart.pie.fill"
-            ),
-        ]
+        AppShortcut(
+            intent: AddTransactionIntent(),
+            phrases: [
+                "用 \(.applicationName) 记一笔",
+                "\(.applicationName) 记账",
+            ],
+            shortTitle: "记一笔",
+            systemImageName: "plus.circle.fill"
+        )
+        AppShortcut(
+            intent: MonthSummaryIntent(),
+            phrases: [
+                "用 \(.applicationName) 查本月收支",
+                "\(.applicationName) 本月花了多少",
+            ],
+            shortTitle: "本月收支",
+            systemImageName: "chart.pie.fill"
+        )
     }
 }
 
